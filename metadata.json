@@ -1,0 +1,6 @@
+{
+  "name": "smart MTs (sMTs)",
+  "description": "Satu Platform Digital untuk Absensi, Pembelajaran, Ujian, Penilaian, dan Rapor.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
