@@ -39,6 +39,11 @@ export interface SchoolProfile {
   npsn: string;
   nss?: string;
   accreditation?: string;
+  tagline?: string;
+  motto?: string;
+  vision?: string;
+  mission?: string;
+  values?: string;
   city?: string;
   address: string;
   phone: string;
@@ -51,6 +56,10 @@ export interface SchoolProfile {
   semester: "Ganjil" | "Genap" | "ganjil" | "genap";
   activeCurriculum: "merdeka" | "k13";
   passingGradeDefault: number; // e.g. 75
+  operatingHours?: string;
+  facebook?: string;
+  instagram?: string;
+  youtube?: string;
 }
 
 export interface ClassRoom {
@@ -422,3 +431,81 @@ export interface AuditLog {
   timestamp: string;
   ipOrDevice?: string;
 }
+
+// --------------------------------------------------------
+// PUBLIC WEBSITE & BLOG TYPES
+// --------------------------------------------------------
+
+export type BlogStatus = "draft" | "submitted" | "published" | "rejected" | "archived";
+
+export interface BlogCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  count?: number;
+}
+
+export interface BlogTag {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export interface BlogPost {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorRole?: string;
+  authorAvatar?: string;
+  authorNipOrNis?: string;
+  categoryId: string;
+  categoryName?: string;
+  categorySlug?: string;
+  title: string;
+  slug: string;
+  excerpt: string;
+  content: string;
+  coverImage?: string;
+  tags: string[];
+  status: BlogStatus;
+  views: number;
+  isFeatured?: boolean;
+  submittedAt?: string;
+  publishedAt?: string;
+  rejectedAt?: string;
+  rejectionReason?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrganizationStructureItem {
+  id: string;
+  name: string;
+  position: string;
+  department?: string; // "Pimpinan", "Komite", "Tata Usaha", "Kurikulum", "Kesiswaan", "Sarana Prasarana", "Humas", "Dewan Guru", "Kesiswaan & Siswa"
+  level: number; // 0: Kepala, 1: Waka/Komite/TU, 2: Koordinator/Staff, 3: Guru & Wali Kelas, 4: Siswa & OSIS
+  parentId?: string | null;
+  teacherId?: string | null;
+  teacherName?: string;
+  description?: string;
+  photo?: string;
+  order: number;
+  isActive: boolean;
+  assignmentsSummary?: string[]; // Multiple duties summary e.g. ["Guru B. Indo", "Wali Kelas VII-A", "Guru Piket Senin"]
+}
+
+export interface ContactMessage {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  subject: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export type PublicRoute = "home" | "structure" | "blog" | "blog_detail" | "contact" | "login";
+export type AppViewMode = "public" | "dashboard";
+

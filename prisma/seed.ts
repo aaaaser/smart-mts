@@ -1,4 +1,4 @@
-import { PrismaClient, Role, Gender, EmploymentStatus, StudentStatus, SemesterType, CurriculumType, AssignmentTypeCategory, AttendanceSessionType, AttendanceStatus, AttendanceMethod, QuestionType, DifficultyLevel, CognitiveLevel, ExamCategory, ExamStatus, AttemptStatus, AssignmentStatus, SubmissionStatus, ReportCardStatus } from "@prisma/client";
+import { PrismaClient, Role, Gender, EmploymentStatus, StudentStatus, SemesterType, CurriculumType, AssignmentTypeCategory, AttendanceSessionType, AttendanceStatus, AttendanceMethod, QuestionType, DifficultyLevel, CognitiveLevel, ExamCategory, ExamStatus, AttemptStatus, AssignmentStatus, SubmissionStatus, ReportCardStatus, BlogStatus } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -17,6 +17,12 @@ async function main() {
 
   // 1. Clear existing data in reverse relation order
   console.log("🧹 Cleaning up old records...");
+  await prisma.contactMessage.deleteMany();
+  await prisma.organizationStructure.deleteMany();
+  await prisma.blogPostTag.deleteMany();
+  await prisma.blogPost.deleteMany();
+  await prisma.blogTag.deleteMany();
+  await prisma.blogCategory.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.announcement.deleteMany();
@@ -74,17 +80,22 @@ async function main() {
   console.log("🏫 Creating School Setting...");
   await prisma.schoolSetting.create({
     data: {
-      name: "MTs Negeri 1 Jakarta",
+      name: "smart MTs (sMTs)",
       npsn: "20108921",
       nss: "121131710001",
       accreditation: "A (Unggul)",
-      address: "Jl. Madrasah No. 10, Cilandak, Jakarta Selatan",
+      tagline: "Sistem Manajemen Madrasah Terpadu",
+      motto: "Belajar, berkembang, dan berprestasi bersama.",
+      vision: "Mewujudkan generasi madrasah yang unggul dalam Imtaq dan Iptek, berakhlak mulia, berkarakter moderat, dan kompetitif global.",
+      mission: "1. Menyelenggarakan pendidikan madrasah terpadu berkualitas tinggi.\n2. Mengintegrasikan teknologi cerdas dalam pembelajaran & manajemen.\n3. Menumbuhkan budaya literasi, sains, dan tahfidz Al-Qur'an.\n4. Membina prestasi akademik dan non-akademik berdaya saing nasional.",
+      values: "INTEGRITAS, ISLAMI, INOVATIF, INKLUSIF, INSPIRATIF",
+      address: "Jl. Madrasah Terpadu No. 12, Kebayoran Baru, Jakarta Selatan",
       phone: "(021) 7890123",
-      email: "info@mtsn1jakarta.sch.id",
-      website: "https://mtsn1jakarta.sch.id",
+      email: "info@smts.sch.id",
+      website: "https://smts.sch.id",
       logoUrl: "",
-      principalName: "Drs. H. Ahmad Dahlan, M.Pd.I",
-      principalNip: "197505122000031002",
+      principalName: "Dr. H. Ahmad Fauzi, M.Pd.I.",
+      principalNip: "197205141998031002",
       activeAcademicYear: "2025/2026",
       activeSemester: "Ganjil",
       activeCurriculum: "merdeka",
@@ -92,6 +103,12 @@ async function main() {
       schoolStartTime: "07:00",
       schoolLateLimit: "07:15",
       schoolEndTime: "15:00",
+      operatingHours: "Senin - Jumat: 06.30 - 15.30 WIB | Sabtu: 07.00 - 12.00 WIB",
+      socialMedia: JSON.stringify({
+        facebook: "@smts.official",
+        instagram: "@smts_madrasah",
+        youtube: "@sMTsOfficialChannel",
+      }),
     },
   });
 
@@ -957,13 +974,381 @@ async function main() {
     },
   });
 
+  // 20. Blog Categories & Tags
+  console.log("📝 Creating Blog Categories & Tags...");
+  const catBerita = await prisma.blogCategory.create({
+    data: { name: "Berita Madrasah", slug: "berita-madrasah", description: "Warta terkini kegiatan dan informasi resmi madrasah" },
+  });
+  const catPendidikan = await prisma.blogCategory.create({
+    data: { name: "Pendidikan & Kurikulum", slug: "pendidikan-dan-kurikulum", description: "Artikel pedagogik, Kurikulum Merdeka, dan metode belajar" },
+  });
+  const catPrestasi = await prisma.blogCategory.create({
+    data: { name: "Prestasi Siswa", slug: "prestasi-siswa", description: "Kabar gembira kejuaraan sains, seni, olahraga, dan riset" },
+  });
+  const catKegiatan = await prisma.blogCategory.create({
+    data: { name: "Kegiatan & Ekskul", slug: "kegiatan-dan-ekskul", description: "Dokumentasi perkemahan, matsama, classmeeting, dan ekskul" },
+  });
+  const catArtikelGuru = await prisma.blogCategory.create({
+    data: { name: "Artikel Guru", slug: "artikel-guru", description: "Opini edukatif, karya ilmiah, dan refleksi pembelajaran guru" },
+  });
+  const catTips = await prisma.blogCategory.create({
+    data: { name: "Tips Belajar", slug: "tips-belajar", description: "Panduan belajar efektif, manajemen waktu, dan persiapan ujian" },
+  });
+  const catKeagamaan = await prisma.blogCategory.create({
+    data: { name: "Keagamaan & Karakter", slug: "keagamaan-dan-karakter", description: "Kajian islami, tahfidz, akhlakul karimah, dan bina karakter" },
+  });
+
+  const tagAkademik = await prisma.blogTag.create({ data: { name: "Akademik", slug: "akademik" } });
+  const tagMatsama = await prisma.blogTag.create({ data: { name: "Matsama", slug: "matsama" } });
+  const tagKurikulum = await prisma.blogTag.create({ data: { name: "Kurikulum Merdeka", slug: "kurikulum-merdeka" } });
+  const tagPrestasi = await prisma.blogTag.create({ data: { name: "Prestasi", slug: "prestasi" } });
+  const tagTahfidz = await prisma.blogTag.create({ data: { name: "Tahfidz", slug: "tahfidz" } });
+  const tagInovasi = await prisma.blogTag.create({ data: { name: "Inovasi Guru", slug: "inovasi-guru" } });
+
+  // 21. Blog Posts (5 PUBLISHED, 2 DRAFT, 2 SUBMITTED, 1 REJECTED)
+  console.log("📰 Creating Blog Posts...");
+  const p1 = await prisma.blogPost.create({
+    data: {
+      authorId: adminUser.id,
+      categoryId: catBerita.id,
+      title: "Selamat Datang di Website Resmi smart MTs",
+      slug: "selamat-datang-di-website-resmi-smart-mts",
+      excerpt: "smart MTs resmi meluncurkan portal digital terpadu untuk absensi, pembelajaran, CBT, dan layanan informasi publik madrasah.",
+      content: `Puji syukur kita panjatkan ke hadirat Allah SWT, atas rahmat dan karunia-Nya portal resmi smart MTs (sMTs) kini hadir sebagai jembatan informasi dan pusat ekosistem digital madrasah.
+
+Di era transformasi digital, madrasah dituntut tidak hanya unggul dalam pembentukan akhlakul karimah, namun juga adaptif terhadap kemajuan sains dan teknologi. Melalui platform smart MTs, seluruh proses administrasi mulai dari absensi terpadu satu scanner, bank soal CBT Kurikulum Merdeka, penugasan ganda guru, hingga digitalisasi e-rapor dapat diakses secara transparan dan akurat.
+
+Semoga portal ini menjadi media silaturahmi yang produktif bagi para guru, siswa, wali murid, serta masyarakat luas. Mari bersama mewujudkan madrasah maju, bermutu, dan mendunia.`,
+      coverImage: "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1200&auto=format&fit=crop&q=80",
+      status: BlogStatus.PUBLISHED,
+      views: 340,
+      isFeatured: true,
+      publishedAt: new Date("2026-07-15T08:00:00.000Z"),
+    },
+  });
+  await prisma.blogPostTag.create({ data: { postId: p1.id, tagId: tagAkademik.id } });
+
+  const p2 = await prisma.blogPost.create({
+    data: {
+      authorId: createdTeachers["aisyah"].userId,
+      categoryId: catPendidikan.id,
+      title: "Semangat Belajar di Tahun Ajaran Baru 2026/2027",
+      slug: "semangat-belajar-di-tahun-ajaran-baru",
+      excerpt: "Menyambut tahun pelajaran baru dengan semangat baru, Kurikulum Merdeka Fase D, dan pembelajaran berbasis proyek interaktif.",
+      content: `Tahun ajaran baru adalah kanvas kosong yang siap kita lukis dengan pencapaian dan kebiasaan-kebiasaan baik. Seluruh dewan guru sMTs telah menyiapkan modul pembelajaran terdiferensiasi yang menyenangkan dan kontekstual.
+
+Siswa diajak tidak sekadar menghafal rumus atau teori, melainkan memahami relevansi ilmu pengetahuan dalam kehidupan sehari-hari melalui Profil Pelajar Rahmatan Lil Alamin. Kami mengajak seluruh siswa untuk aktif memanfaatkan fitur latihan soal interaktif dan bank materi digital yang telah disediakan.`,
+      coverImage: "https://images.unsplash.com/photo-1427504494785-3a9ca7044f45?w=1200&auto=format&fit=crop&q=80",
+      status: BlogStatus.PUBLISHED,
+      views: 215,
+      isFeatured: false,
+      publishedAt: new Date("2026-07-20T09:30:00.000Z"),
+    },
+  });
+  await prisma.blogPostTag.create({ data: { postId: p2.id, tagId: tagKurikulum.id } });
+
+  const p3 = await prisma.blogPost.create({
+    data: {
+      authorId: createdTeachers["shodiq"].userId,
+      categoryId: catKegiatan.id,
+      title: "Kegiatan Matsama Tahun Pelajaran 2026/2027 Berlangsung Meriah",
+      slug: "kegiatan-matsama-tahun-pelajaran-2026-2027",
+      excerpt: "Masa Ta'aruf Siswa Madrasah (Matsama) diisi dengan pengenalan budaya madrasah, workshop literasi digital, dan pentas seni islami.",
+      content: `Selama tiga hari penuh keceriaan, sebanyak ratusan peserta didik baru kelas VII mengikuti rangkaian Masa Ta'aruf Siswa Madrasah (Matsama). Kegiatan ini bertujuan menumbuhkan rasa persaudaraan (ukhuwah islamiyah), mengenalkan tata tertib madrasah, serta melatih kedisiplinan sejak dini.
+
+Puncak acara ditandai dengan parade ekstrakurikuler, unjuk kreasi regu pramuka, demonstrasi robotik madrasah, dan pembacaan ikrar integritas siswa sMTs.`,
+      coverImage: "https://images.unsplash.com/photo-1577896851231-70ef18881754?w=1200&auto=format&fit=crop&q=80",
+      status: BlogStatus.PUBLISHED,
+      views: 489,
+      isFeatured: true,
+      publishedAt: new Date("2026-07-25T11:00:00.000Z"),
+    },
+  });
+  await prisma.blogPostTag.create({ data: { postId: p3.id, tagId: tagMatsama.id } });
+
+  const p4 = await prisma.blogPost.create({
+    data: {
+      authorId: createdTeachers["arief"].userId,
+      categoryId: catPrestasi.id,
+      title: "Prestasi Siswa smart MTs di Ajang Kompetisi Sains Madrasah",
+      slug: "prestasi-siswa-smart-mts-di-ajang-ksm",
+      excerpt: "Tim Olimpiade IPA dan Matematika smart MTs berhasil memborong 3 medali emas dan 2 perak pada KSM tingkat provinsi.",
+      content: `Kabar membanggakan kembali dipersembahkan oleh duta sains smart MTs. Setelah melalui tahapan seleksi ketat dan bimbingan intensif club sains madrasah, para siswa berhasil menorehkan prestasi gemilang pada Kompetisi Sains Madrasah (KSM).
+
+Kepala Madrasah mengapresiasi dedikasi para guru pembimbing dan orang tua yang senantiasa memberikan doa serta dukungan moril. Prestasi ini membuktikan bahwa siswa madrasah mampu bersaing di panggung sains bergengsi dengan tetap menjunjung nilai-nilai kejujuran.`,
+      coverImage: "https://images.unsplash.com/photo-1567168544813-cc03465b4fa8?w=1200&auto=format&fit=crop&q=80",
+      status: BlogStatus.PUBLISHED,
+      views: 520,
+      isFeatured: false,
+      publishedAt: new Date("2026-08-05T14:15:00.000Z"),
+    },
+  });
+  await prisma.blogPostTag.create({ data: { postId: p4.id, tagId: tagPrestasi.id } });
+
+  const p5 = await prisma.blogPost.create({
+    data: {
+      authorId: createdTeachers["dewi"].userId,
+      categoryId: catArtikelGuru.id,
+      title: "Guru dan Tenaga Kependidikan: Menginspirasi dengan Hati",
+      slug: "guru-dan-tenaga-kependidikan-menginspirasi-dengan-hati",
+      excerpt: "Refleksi peran pendidik di era digital bukan sekadar transfer ilmu, melainkan menanamkan nilai kearifan dan welas asih.",
+      content: `Di tengah gempuran kecerdasan buatan dan derasnya arus informasi internet, sentuhan kemanusiaan dan keteladanan seorang guru tetap menjadi pilar yang tak tergantikan.
+
+Menjadi pendidik di madrasah adalah amanah dakwah dan pengabdian. Setiap sapaan ramah di pagi hari, bimbingan sabar saat murid menemui jalan buntu, serta doa tulus yang dipanjatkan para guru adalah bekal abadi bagi pembentukan karakter generasi penerus bangsa.`,
+      coverImage: "https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=1200&auto=format&fit=crop&q=80",
+      status: BlogStatus.PUBLISHED,
+      views: 180,
+      isFeatured: false,
+      publishedAt: new Date("2026-08-12T10:00:00.000Z"),
+    },
+  });
+  await prisma.blogPostTag.create({ data: { postId: p5.id, tagId: tagInovasi.id } });
+
+  // 2 DRAFT Posts
+  await prisma.blogPost.create({
+    data: {
+      authorId: createdTeachers["aisyah"].userId,
+      categoryId: catPendidikan.id,
+      title: "Panduan Penyusunan Modul Ajar Berbasis Diferensiasi",
+      slug: "panduan-penyusunan-modul-ajar-diferensiasi",
+      excerpt: "Draft rancangan panduan praktis asesmen diagnostik dan diferensiasi konten bagi guru madrasah.",
+      content: "Draft artikel masih dalam proses penulisan oleh Ibu Nur Aisyah...",
+      status: BlogStatus.DRAFT,
+      views: 0,
+    },
+  });
+
+  await prisma.blogPost.create({
+    data: {
+      authorId: createdTeachers["dewi"].userId,
+      categoryId: catTips.id,
+      title: "Strategi Efektif Meningkatkan Minat Baca Siswa Madrasah",
+      slug: "strategi-efektif-meningkatkan-minat-baca",
+      excerpt: "Catatan ide pojok baca digital dan program gemar membaca buku cerita islami.",
+      content: "Draft artikel catatan literasi sedang dihimpun...",
+      status: BlogStatus.DRAFT,
+      views: 0,
+    },
+  });
+
+  // 2 SUBMITTED Posts (Menunggu Review Admin)
+  await prisma.blogPost.create({
+    data: {
+      authorId: createdTeachers["arief"].userId,
+      categoryId: catPendidikan.id,
+      title: "Eksplorasi Pembelajaran Sains Berbasis Laboratorium Virtual",
+      slug: "eksplorasi-pembelajaran-sains-berbasis-lab-virtual",
+      excerpt: "Memanfaatkan simulasi interaktif PhET dalam pemahaman konsep fisika dan kimia dasar di tingkat MTs.",
+      content: `Integrasi laboratorium virtual memberi ruang bagi peserta didik untuk bereksperimen dengan aman, mandiri, dan bebas resiko. Melalui visualisasi interaktif gaya kinetik dan reaksi kimia sederhana, pemahaman konseptual siswa meningkat secara signifikan.
+
+Artikel ini menguraikan tahapan praktis penggabungan simulasi PhET dengan lembar kerja siswa terstruktur yang telah diujicobakan pada kelas VIII sMTs.`,
+      coverImage: "https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=1200&auto=format&fit=crop&q=80",
+      status: BlogStatus.SUBMITTED,
+      submittedAt: new Date("2026-08-28T07:30:00.000Z"),
+      views: 0,
+    },
+  });
+
+  await prisma.blogPost.create({
+    data: {
+      authorId: createdTeachers["shodiq"].userId,
+      categoryId: catKeagamaan.id,
+      title: "Menumbuhkan Jiwa Kepemimpinan Islami Melalui Ekstrakurikuler",
+      slug: "menumbuhkan-jiwa-kepemimpinan-islami",
+      excerpt: "Bagaimana kegiatan organisasi kepanduan dan OSIS membentuk mental disiplin, tanggung jawab, dan amanah.",
+      content: `Kepemimpinan dalam pandangan Islam adalah khidmah (pelayanan) dan pertanggungjawaban. Dalam wadah ekstrakurikuler madrasah, siswa dilatih berdiskusi, mengelola program kerja bakti sosial, dan menghargai perbedaan pandangan secara santun.`,
+      coverImage: "https://images.unsplash.com/photo-1526976668912-1a811878dd37?w=1200&auto=format&fit=crop&q=80",
+      status: BlogStatus.SUBMITTED,
+      submittedAt: new Date("2026-08-28T09:00:00.000Z"),
+      views: 0,
+    },
+  });
+
+  // 1 REJECTED Post (dengan alasan penolakan)
+  await prisma.blogPost.create({
+    data: {
+      authorId: createdTeachers["aisyah"].userId,
+      categoryId: catBerita.id,
+      title: "Daftar Toko Penjual Seragam dan Buku Non-Kurikulum",
+      slug: "daftar-toko-penjual-seragam-dan-buku",
+      excerpt: "Informasi toko rekanan perlengkapan madrasah di sekitar area kecamatan.",
+      content: "Konten yang bersifat komersial dan belum diverifikasi secara resmi oleh pihak madrasah...",
+      status: BlogStatus.REJECTED,
+      rejectedAt: new Date("2026-08-27T10:00:00.000Z"),
+      rejectionReason: "Konten memuat promosi komersial pihak ketiga yang belum sesuai dengan panduan publikasi resmi madrasah. Mohon disesuaikan dengan topik edukatif.",
+      views: 0,
+    },
+  });
+
+  // 22. Organization Structure Hierarchy
+  console.log("🏛️ Creating Organization Structure...");
+  const orgKepala = await prisma.organizationStructure.create({
+    data: {
+      name: "Dr. H. Ahmad Fauzi, M.Pd.I.",
+      position: "Kepala Madrasah",
+      department: "Pimpinan",
+      level: 0,
+      order: 1,
+      description: "Penanggung jawab utama kebijakan akademik, manajerial, dan kemitraan madrasah.",
+      photo: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=300&auto=format&fit=crop&q=80",
+      isActive: true,
+    },
+  });
+
+  const orgKomite = await prisma.organizationStructure.create({
+    data: {
+      name: "H. Abdul Wahab, S.E.",
+      position: "Ketua Komite Madrasah",
+      department: "Komite",
+      level: 1,
+      parentId: orgKepala.id,
+      order: 2,
+      description: "Mitra strategis representasi wali murid dalam pengawasan dan peningkatan mutu madrasah.",
+      photo: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300&auto=format&fit=crop&q=80",
+      isActive: true,
+    },
+  });
+
+  const orgTU = await prisma.organizationStructure.create({
+    data: {
+      name: "Drs. Bambang Sudarmono, M.M.",
+      position: "Kepala Tata Usaha",
+      department: "Tata Usaha",
+      level: 1,
+      parentId: orgKepala.id,
+      order: 3,
+      description: "Koordinator administrasi kepegawaian, keuangan, persuratan, dan layanan publik madrasah.",
+      photo: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=300&auto=format&fit=crop&q=80",
+      isActive: true,
+    },
+  });
+
+  const orgWakaKurikulum = await prisma.organizationStructure.create({
+    data: {
+      name: createdTeachers["aisyah"].fullName,
+      position: "Waka Bidang Kurikulum",
+      department: "Kurikulum",
+      level: 1,
+      parentId: orgKepala.id,
+      teacherId: createdTeachers["aisyah"].id,
+      order: 4,
+      description: "Pengembangan Kurikulum Merdeka, perencanaan jadwal KBM, evaluasi asesmen, dan digitalisasi e-rapor.",
+      photo: createdTeachers["aisyah"].photo,
+      isActive: true,
+    },
+  });
+
+  const orgWakaKesiswaan = await prisma.organizationStructure.create({
+    data: {
+      name: createdTeachers["shodiq"].fullName,
+      position: "Waka Bidang Kesiswaan",
+      department: "Kesiswaan",
+      level: 1,
+      parentId: orgKepala.id,
+      teacherId: createdTeachers["shodiq"].id,
+      order: 5,
+      description: "Pembinaan karakter siswa, kedisiplinan, Matsama, serta koordinasi OSIS & ekstrakurikuler.",
+      photo: createdTeachers["shodiq"].photo,
+      isActive: true,
+    },
+  });
+
+  const orgWakaSarpras = await prisma.organizationStructure.create({
+    data: {
+      name: createdTeachers["arief"].fullName,
+      position: "Waka Sarana & Prasarana",
+      department: "Sarana Prasarana",
+      level: 1,
+      parentId: orgKepala.id,
+      teacherId: createdTeachers["arief"].id,
+      order: 6,
+      description: "Pengelolaan laboratorium sains & IT, sarana smart classroom, perpustakaan, dan lingkungan madrasah.",
+      photo: createdTeachers["arief"].photo,
+      isActive: true,
+    },
+  });
+
+  const orgWakaHumas = await prisma.organizationStructure.create({
+    data: {
+      name: createdTeachers["dewi"].fullName,
+      position: "Waka Humas & Kemitraan",
+      department: "Humas",
+      level: 1,
+      parentId: orgKepala.id,
+      teacherId: createdTeachers["dewi"].id,
+      order: 7,
+      description: "Publikasi media resmi madrasah, kemitraan instansi, dan komunikasi harmonis dengan masyarakat.",
+      photo: createdTeachers["dewi"].photo,
+      isActive: true,
+    },
+  });
+
+  // Level 2: Koordinator & Pembina
+  const orgKoordTahfidz = await prisma.organizationStructure.create({
+    data: {
+      name: createdTeachers["ridwan"].fullName,
+      position: "Koordinator Program Tahfidz & Keagamaan",
+      department: "Kurikulum",
+      level: 2,
+      parentId: orgWakaKurikulum.id,
+      teacherId: createdTeachers["ridwan"].id,
+      order: 8,
+      description: "Pembimbingan setoran hafalan Al-Qur'an dan pembiasaan sholat dhuha/dzuhur berjamaah.",
+      photo: createdTeachers["ridwan"].photo,
+      isActive: true,
+    },
+  });
+
+  // Level 3: Dewan Guru & Wali Kelas
+  await prisma.organizationStructure.create({
+    data: {
+      name: "Dewan Guru & Wali Kelas sMTs",
+      position: "Pendidik & Pembimbing Rombongan Belajar",
+      department: "Dewan Guru",
+      level: 3,
+      parentId: orgWakaKurikulum.id,
+      order: 9,
+      description: "Tim pendidik berdedikasi mengampu 20+ mata pelajaran dan membimbing kelas VII, VIII, IX.",
+      photo: "https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=300&auto=format&fit=crop&q=80",
+      isActive: true,
+    },
+  });
+
+  // Level 4: Organisasi Siswa (OSIS)
+  await prisma.organizationStructure.create({
+    data: {
+      name: "Pengurus OSIS & MPK smart MTs",
+      position: "Organisasi Siswa Intra Madrasah",
+      department: "Kesiswaan & Siswa",
+      level: 4,
+      parentId: orgWakaKesiswaan.id,
+      order: 10,
+      description: "Wadah kepemimpinan, kreativitas, dan aspirasi seluruh siswa madrasah.",
+      photo: "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=300&auto=format&fit=crop&q=80",
+      isActive: true,
+    },
+  });
+
+  // 23. Sample Contact Inquiries
+  console.log("📬 Creating Sample Contact Inquiries...");
+  await prisma.contactMessage.create({
+    data: {
+      name: "Drs. Hendra Gunawan",
+      email: "hendra.gunawan@gmail.com",
+      phone: "081288997766",
+      subject: "Informasi Pendaftaran Siswa Baru (PPDB) TP 2026/2027",
+      message: "Assalamu'alaikum, kami ingin menanyakan jadwal pendaftaran jalur prestasi dan tahfidz untuk putra kami. Terima kasih.",
+      isRead: false,
+    },
+  });
+
   await prisma.auditLog.create({
     data: {
       userId: adminUser.id,
       userName: "Administrator",
       userRole: "ADMIN",
-      action: "DATABASE_SEED",
-      details: "Inisialisasi database PostgreSQL lokal smts_db dengan seed lengkap (5 guru, 30 siswa, 5 kelas, CP/KD, bank soal, absensi terpadu)",
+      action: "DATABASE_SEED_BLOG_PUBLIC",
+      details: "Inisialisasi data public website, blog publication workflow (5 published, 2 draft, 2 submitted, 1 rejected), struktur organisasi visual, dan setting madrasah.",
       ipOrDevice: "127.0.0.1 (Localhost Setup)",
     },
   });

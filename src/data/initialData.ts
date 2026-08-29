@@ -19,15 +19,27 @@ import {
   AuditLog,
   TeacherDuty,
   Extracurricular,
+  BlogPost,
+  BlogCategory,
+  BlogTag,
+  OrganizationStructureItem,
+  ContactMessage,
 } from "../types";
 
 export const initialSchoolProfile: SchoolProfile = {
   id: "school_01",
-  name: "smart MTs (sMTs) Terpadu",
+  name: "smart MTs (sMTs)",
   npsn: "20108921",
-  address: "Jl. Madrasah No. 12, Kebayoran Baru, Jakarta Selatan",
+  nss: "121131710001",
+  accreditation: "A (Unggul)",
+  tagline: "Sistem Manajemen Madrasah Terpadu",
+  motto: "Belajar, berkembang, dan berprestasi bersama.",
+  vision: "Mewujudkan generasi madrasah yang unggul dalam Imtaq dan Iptek, berakhlak mulia, berkarakter moderat, dan kompetitif global.",
+  mission: "1. Menyelenggarakan pendidikan madrasah terpadu berkualitas tinggi.\n2. Mengintegrasikan teknologi cerdas dalam pembelajaran & manajemen.\n3. Menumbuhkan budaya literasi, sains, dan tahfidz Al-Qur'an.\n4. Membina prestasi akademik dan non-akademik berdaya saing nasional.",
+  values: "INTEGRITAS, ISLAMI, INOVATIF, INKLUSIF, INSPIRATIF",
+  address: "Jl. Madrasah Terpadu No. 12, Kebayoran Baru, Jakarta Selatan",
   phone: "(021) 789-2345",
-  email: "admin@smts.sch.id",
+  email: "info@smts.sch.id",
   website: "https://smts.sch.id",
   principalName: "Dr. H. Ahmad Fauzi, M.Pd.I.",
   principalNip: "197205141998031002",
@@ -35,6 +47,10 @@ export const initialSchoolProfile: SchoolProfile = {
   semester: "Ganjil",
   activeCurriculum: "merdeka",
   passingGradeDefault: 75,
+  operatingHours: "Senin - Jumat: 06.30 - 15.30 WIB | Sabtu: 07.00 - 12.00 WIB",
+  facebook: "@smts.official",
+  instagram: "@smts_madrasah",
+  youtube: "@sMTsOfficialChannel",
 };
 
 export const initialUsers: User[] = [
@@ -1570,3 +1586,465 @@ export const initialExtracurriculars: Extracurricular[] = [
     academicYear: "2025/2026",
   },
 ];
+
+// --------------------------------------------------------
+// PUBLIC BLOG CATEGORIES & TAGS
+// --------------------------------------------------------
+
+export const initialBlogCategories: BlogCategory[] = [
+  { id: "cat_berita", name: "Berita Madrasah", slug: "berita-madrasah", description: "Warta terkini kegiatan dan informasi resmi madrasah", count: 2 },
+  { id: "cat_pendidikan", name: "Pendidikan & Kurikulum", slug: "pendidikan-dan-kurikulum", description: "Artikel pedagogik, Kurikulum Merdeka, dan metode belajar", count: 2 },
+  { id: "cat_prestasi", name: "Prestasi Siswa", slug: "prestasi-siswa", description: "Kabar gembira kejuaraan sains, seni, olahraga, dan riset", count: 1 },
+  { id: "cat_kegiatan", name: "Kegiatan & Ekskul", slug: "kegiatan-dan-ekskul", description: "Dokumentasi perkemahan, matsama, classmeeting, dan ekskul", count: 1 },
+  { id: "cat_artikel_guru", name: "Artikel Guru", slug: "artikel-guru", description: "Opini edukatif, karya ilmiah, dan refleksi pembelajaran guru", count: 1 },
+  { id: "cat_tips", name: "Tips Belajar", slug: "tips-belajar", description: "Panduan belajar efektif, manajemen waktu, dan persiapan ujian", count: 0 },
+  { id: "cat_keagamaan", name: "Keagamaan & Karakter", slug: "keagamaan-dan-karakter", description: "Kajian islami, tahfidz, akhlakul karimah, dan bina karakter", count: 0 },
+];
+
+export const initialBlogTags: BlogTag[] = [
+  { id: "tag_akademik", name: "Akademik", slug: "akademik" },
+  { id: "tag_matsama", name: "Matsama", slug: "matsama" },
+  { id: "tag_kurikulum", name: "Kurikulum Merdeka", slug: "kurikulum-merdeka" },
+  { id: "tag_prestasi", name: "Prestasi", slug: "prestasi" },
+  { id: "tag_tahfidz", name: "Tahfidz", slug: "tahfidz" },
+  { id: "tag_inovasi", name: "Inovasi Guru", slug: "inovasi-guru" },
+];
+
+// --------------------------------------------------------
+// PUBLIC & DASHBOARD BLOG POSTS (5 PUBLISHED, 2 DRAFT, 2 SUBMITTED, 1 REJECTED)
+// --------------------------------------------------------
+
+export const initialBlogPosts: BlogPost[] = [
+  // 1. Published Post 1 (Featured)
+  {
+    id: "post_01",
+    authorId: "user_admin",
+    authorName: "Drs. Bambang Sudarmono, M.M.",
+    authorRole: "Kepala Tata Usaha & Administrator",
+    authorAvatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80",
+    authorNipOrNis: "196812151994031001",
+    categoryId: "cat_berita",
+    categoryName: "Berita Madrasah",
+    categorySlug: "berita-madrasah",
+    title: "Selamat Datang di Website Resmi smart MTs (sMTs)",
+    slug: "selamat-datang-di-website-resmi-smart-mts",
+    excerpt: "smart MTs resmi meluncurkan portal digital terpadu untuk absensi, pembelajaran, CBT, dan layanan informasi publik madrasah.",
+    content: `Puji syukur kita panjatkan ke hadirat Allah SWT, atas limpahan rahmat dan hidayah-Nya portal resmi smart MTs (sMTs) kini hadir sebagai jembatan informasi dan pusat ekosistem digital madrasah.
+
+Di era transformasi digital pendidikan madrasah, smart MTs berkomitmen menghadirkan layanan prima yang terintegrasi:
+
+1. **Absensi Terpadu Multi-Peran**: Satu sistem scanner QR terpadu melayani kehadiran guru, siswa, dan staf secara real-time dan akurat.
+2. **Bank Soal & CBT Kurikulum Merdeka**: Evaluasi asesmen formatif dan sumatif dengan variasi tipe soal modern (Pilihan Ganda Kompleks, Benar/Salah, Menjodohkan, Isian Singkat, dan Uraian).
+3. **Manajemen Tugas Ganda Guru**: Mendukung guru dengan berbagai amanah tambahan seperti Wali Kelas, Guru Piket, Pembina Ekskul, dan Koordinator Bidang.
+4. **Digitalisasi E-Rapor**: Pengolahan nilai transparan, deskripsi capaian kompetensi otomatis, dan cetak rapor digital standar Kemenag.
+
+Semoga portal ini dapat menjadi media silaturahmi yang produktif bagi para guru, siswa, orang tua/wali murid, serta masyarakat luas. Mari bersama mewujudkan madrasah maju, bermutu, dan mendunia.`,
+    coverImage: "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1200&auto=format&fit=crop&q=80",
+    tags: ["Akademik", "Inovasi Guru"],
+    status: "published",
+    views: 420,
+    isFeatured: true,
+    publishedAt: "2026-07-15T08:00:00.000Z",
+    createdAt: "2026-07-14T09:00:00.000Z",
+    updatedAt: "2026-07-15T08:00:00.000Z",
+  },
+  // 2. Published Post 2
+  {
+    id: "post_02",
+    authorId: "teacher_01",
+    authorName: "Siti Nurhaliza, M.Pd.",
+    authorRole: "Guru Matematika & Waka Kurikulum",
+    authorAvatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80",
+    authorNipOrNis: "198304122008012015",
+    categoryId: "cat_pendidikan",
+    categoryName: "Pendidikan & Kurikulum",
+    categorySlug: "pendidikan-dan-kurikulum",
+    title: "Semangat Belajar di Tahun Ajaran Baru 2026/2027",
+    slug: "semangat-belajar-di-tahun-ajaran-baru",
+    excerpt: "Menyambut tahun pelajaran baru dengan semangat baru, Kurikulum Merdeka Fase D, dan pembelajaran berbasis proyek interaktif.",
+    content: `Tahun ajaran baru adalah kanvas bersih yang siap kita lukis dengan pencapaian gemilang dan kebiasaan-kebiasaan mulia. Seluruh dewan guru sMTs telah merancang modul pembelajaran terdiferensiasi yang menyenangkan, interaktif, dan kontekstual.
+
+Pada semester ganjil ini, pembelajaran Matematika dan Sains akan diperkuat dengan studi kasus berbasis dunia nyata dan pemanfaatan perangkat digital cerdas. Siswa diajak tidak sekadar menghafal rumus, melainkan memahami relevansi ilmu dalam memecahkan masalah sehari-hari.
+
+Kami mengajak seluruh siswa untuk aktif memanfaatkan modul ajar dan fitur latihan mandiri di sistem sMTs. Selamat menuntut ilmu, semoga Allah meridhoi setiap langkah kita.`,
+    coverImage: "https://images.unsplash.com/photo-1427504494785-3a9ca7044f45?w=1200&auto=format&fit=crop&q=80",
+    tags: ["Kurikulum Merdeka", "Akademik"],
+    status: "published",
+    views: 295,
+    isFeatured: false,
+    publishedAt: "2026-07-20T09:30:00.000Z",
+    createdAt: "2026-07-19T14:20:00.000Z",
+    updatedAt: "2026-07-20T09:30:00.000Z",
+  },
+  // 3. Published Post 3 (Featured)
+  {
+    id: "post_03",
+    authorId: "teacher_04",
+    authorName: "Ahmad Shodiq, S.Pd.I.",
+    authorRole: "Guru PAI & Waka Kesiswaan",
+    authorAvatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80",
+    authorNipOrNis: "198406152011011005",
+    categoryId: "cat_kegiatan",
+    categoryName: "Kegiatan & Ekskul",
+    categorySlug: "kegiatan-dan-ekskul",
+    title: "Kegiatan Matsama Tahun Pelajaran 2026/2027 Berlangsung Meriah",
+    slug: "kegiatan-matsama-tahun-pelajaran-2026-2027",
+    excerpt: "Masa Ta'aruf Siswa Madrasah (Matsama) diisi dengan pengenalan budaya madrasah, workshop literasi digital, dan pentas seni islami.",
+    content: `Ratusan peserta didik baru kelas VII mengikuti rangkaian Masa Ta'aruf Siswa Madrasah (Matsama) smart MTs dengan antusiasme tinggi. Kegiatan ini diselenggarakan guna menyambut santri baru dengan suasana ramah anak, edukatif, dan penuh kehangatan ukhuwah islamiyah.
+
+Rangkaian acara diawali dengan apel pembukaan oleh Kepala Madrasah, orientasi budaya madrasah, pengenalan sistem presensi QR sMTs, hingga pawai unjuk kreasi 10 ekstrakurikuler unggulan madrasah.
+
+Diharapkan seluruh siswa baru dapat cepat beradaptasi dengan lingkungan belajar madrasah dan siap menorehkan prestasi terbaik.`,
+    coverImage: "https://images.unsplash.com/photo-1577896851231-70ef18881754?w=1200&auto=format&fit=crop&q=80",
+    tags: ["Matsama", "Prestasi"],
+    status: "published",
+    views: 580,
+    isFeatured: true,
+    publishedAt: "2026-07-25T11:00:00.000Z",
+    createdAt: "2026-07-24T16:00:00.000Z",
+    updatedAt: "2026-07-25T11:00:00.000Z",
+  },
+  // 4. Published Post 4
+  {
+    id: "post_04",
+    authorId: "teacher_02",
+    authorName: "Arief Wibowo, S.Si., M.Sc.",
+    authorRole: "Guru IPA & Waka Sarpras",
+    authorAvatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+    authorNipOrNis: "198509182010011008",
+    categoryId: "cat_prestasi",
+    categoryName: "Prestasi Siswa",
+    categorySlug: "prestasi-siswa",
+    title: "Prestasi Siswa smart MTs di Ajang Kompetisi Sains Madrasah",
+    slug: "prestasi-siswa-smart-mts-di-ajang-ksm",
+    excerpt: "Tim Olimpiade IPA dan Matematika smart MTs berhasil memborong 3 medali emas dan 2 perak pada KSM tingkat provinsi.",
+    content: `Prestasi membanggakan kembali dipersembahkan oleh duta sains smart MTs pada ajang bergengsi Kompetisi Sains Madrasah (KSM). Delegasi sMTs berhasil meraih 3 Medali Emas pada bidang IPA Terintegrasi dan 2 Medali Perak pada bidang Matematika Terintegrasi.
+
+Keberhasilan ini merupakan buah dari bimbingan terprogram melalui Club Sains Madrasah serta dukungan fasilitas laboratorium sains dan digital yang memadai.
+
+Pihak madrasah menyampaikan apresiasi setinggi-tingginya kepada para siswa berprestasi, guru pembimbing, serta orang tua yang terus memberikan doa dan motivasi terbaik.`,
+    coverImage: "https://images.unsplash.com/photo-1567168544813-cc03465b4fa8?w=1200&auto=format&fit=crop&q=80",
+    tags: ["Prestasi", "Akademik"],
+    status: "published",
+    views: 640,
+    isFeatured: false,
+    publishedAt: "2026-08-05T14:15:00.000Z",
+    createdAt: "2026-08-04T11:30:00.000Z",
+    updatedAt: "2026-08-05T14:15:00.000Z",
+  },
+  // 5. Published Post 5
+  {
+    id: "post_05",
+    authorId: "teacher_03",
+    authorName: "Dewi Lestari, S.Pd.",
+    authorRole: "Guru Bahasa Indonesia & Waka Humas",
+    authorAvatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80",
+    authorNipOrNis: "198711032014022003",
+    categoryId: "cat_artikel_guru",
+    categoryName: "Artikel Guru",
+    categorySlug: "artikel-guru",
+    title: "Guru dan Tenaga Kependidikan: Menginspirasi dengan Hati",
+    slug: "guru-dan-tenaga-kependidikan-menginspirasi-dengan-hati",
+    excerpt: "Refleksi peran pendidik di era digital bukan sekadar transfer ilmu, melainkan menanamkan nilai kearifan dan welas asih.",
+    content: `Di era kecerdasan buatan dan keterbukaan informasi, peran guru bergeser dari sekadar penyampai materi menjadi fasilitator, mentor moral, dan teladan kehidupan.
+
+Teknologi secanggih apa pun tidak akan pernah mampu menggantikan senyuman tulus guru yang menyambut siswa di gerbang madrasah, pelukan hangat saat murid menghadapi kegagalan, serta doa khusyuk yang terlantun di setiap sujud bagi kesuksesan anak didik.
+
+Mari kita jaga semangat mendidik dengan keikhlasan hati demi melahirkan generasi yang tidak hanya cerdas akalnya, tetapi juga luhur budi pekertinya.`,
+    coverImage: "https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=1200&auto=format&fit=crop&q=80",
+    tags: ["Inovasi Guru", "Kurikulum Merdeka"],
+    status: "published",
+    views: 210,
+    isFeatured: false,
+    publishedAt: "2026-08-12T10:00:00.000Z",
+    createdAt: "2026-08-11T13:00:00.000Z",
+    updatedAt: "2026-08-12T10:00:00.000Z",
+  },
+  // 6. Draft Post 1 (by teacher_01)
+  {
+    id: "post_06",
+    authorId: "teacher_01",
+    authorName: "Siti Nurhaliza, M.Pd.",
+    authorRole: "Guru Matematika",
+    authorAvatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80",
+    authorNipOrNis: "198304122008012015",
+    categoryId: "cat_pendidikan",
+    categoryName: "Pendidikan & Kurikulum",
+    categorySlug: "pendidikan-dan-kurikulum",
+    title: "Panduan Penyusunan Modul Ajar Berbasis Diferensiasi",
+    slug: "panduan-penyusunan-modul-ajar-diferensiasi",
+    excerpt: "Draft rancangan panduan praktis asesmen diagnostik dan diferensiasi konten bagi guru madrasah.",
+    content: "Konsep asesmen diagnostik awal dan pemetaan gaya belajar siswa MTs sedang dalam tahap perumusan...",
+    tags: ["Kurikulum Merdeka", "Inovasi Guru"],
+    status: "draft",
+    views: 0,
+    createdAt: "2026-08-25T08:00:00.000Z",
+    updatedAt: "2026-08-25T08:00:00.000Z",
+  },
+  // 7. Draft Post 2 (by teacher_03)
+  {
+    id: "post_07",
+    authorId: "teacher_03",
+    authorName: "Dewi Lestari, S.Pd.",
+    authorRole: "Guru Bahasa Indonesia",
+    authorAvatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80",
+    authorNipOrNis: "198711032014022003",
+    categoryId: "cat_tips",
+    categoryName: "Tips Belajar",
+    categorySlug: "tips-belajar",
+    title: "Strategi Efektif Meningkatkan Minat Baca Siswa Madrasah",
+    slug: "strategi-efektif-meningkatkan-minat-baca",
+    excerpt: "Catatan ide pojok baca digital dan program gemar membaca buku cerita islami.",
+    content: "Pengembangan budaya 15 menit membaca sebelum KBM dimulai di setiap kelas...",
+    tags: ["Akademik"],
+    status: "draft",
+    views: 0,
+    createdAt: "2026-08-26T10:00:00.000Z",
+    updatedAt: "2026-08-26T10:00:00.000Z",
+  },
+  // 8. Submitted Post 1 (by teacher_02 - Menunggu Review Admin)
+  {
+    id: "post_08",
+    authorId: "teacher_02",
+    authorName: "Arief Wibowo, S.Si., M.Sc.",
+    authorRole: "Guru IPA",
+    authorAvatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+    authorNipOrNis: "198509182010011008",
+    categoryId: "cat_pendidikan",
+    categoryName: "Pendidikan & Kurikulum",
+    categorySlug: "pendidikan-dan-kurikulum",
+    title: "Eksplorasi Pembelajaran Sains Berbasis Laboratorium Virtual",
+    slug: "eksplorasi-pembelajaran-sains-berbasis-lab-virtual",
+    excerpt: "Memanfaatkan simulasi interaktif PhET dalam pemahaman konsep fisika dan kimia dasar di tingkat MTs.",
+    content: `Laboratorium virtual membuka cakrawala baru dalam pembelajaran sains interaktif. Melalui simulasi visual PhET, peserta didik dapat melakukan eksperimen fisika dan kimia dasar secara aman, fleksibel, dan terukur.
+
+Uji coba penerapan modul simulasi ini pada siswa kelas VIII-A smart MTs menunjukkan peningkatan pemahaman konsep materi Hukum Newton dan Tekanan Zat sebesar 28% dibandingkan metode konvensional.`,
+    coverImage: "https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=1200&auto=format&fit=crop&q=80",
+    tags: ["Akademik", "Inovasi Guru"],
+    status: "submitted",
+    submittedAt: "2026-08-28T07:30:00.000Z",
+    views: 0,
+    createdAt: "2026-08-27T15:00:00.000Z",
+    updatedAt: "2026-08-28T07:30:00.000Z",
+  },
+  // 9. Submitted Post 2 (by teacher_04 - Menunggu Review Admin)
+  {
+    id: "post_09",
+    authorId: "teacher_04",
+    authorName: "Ahmad Shodiq, S.Pd.I.",
+    authorRole: "Guru PAI",
+    authorAvatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80",
+    authorNipOrNis: "198406152011011005",
+    categoryId: "cat_keagamaan",
+    categoryName: "Keagamaan & Karakter",
+    categorySlug: "keagamaan-dan-karakter",
+    title: "Menumbuhkan Jiwa Kepemimpinan Islami Melalui Ekstrakurikuler",
+    slug: "menumbuhkan-jiwa-kepemimpinan-islami",
+    excerpt: "Bagaimana kegiatan organisasi kepanduan dan OSIS membentuk mental disiplin, tanggung jawab, dan amanah.",
+    content: `Kepemimpinan dalam Islam adalah sebuah amanah dan pengabdian. Melalui kegiatan organisasi kesiswaan seperti Pramuka Madrasah dan OSIS sMTs, para kader muda dilatih untuk bermusyawarah, menghargai pendapat orang lain, dan memimpin dengan keteladanan akhlak.`,
+    coverImage: "https://images.unsplash.com/photo-1526976668912-1a811878dd37?w=1200&auto=format&fit=crop&q=80",
+    tags: ["Tahfidz", "Prestasi"],
+    status: "submitted",
+    submittedAt: "2026-08-28T09:00:00.000Z",
+    views: 0,
+    createdAt: "2026-08-27T16:20:00.000Z",
+    updatedAt: "2026-08-28T09:00:00.000Z",
+  },
+  // 10. Rejected Post (by teacher_01 - Ditolak dengan alasan)
+  {
+    id: "post_10",
+    authorId: "teacher_01",
+    authorName: "Siti Nurhaliza, M.Pd.",
+    authorRole: "Guru Matematika",
+    authorAvatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80",
+    authorNipOrNis: "198304122008012015",
+    categoryId: "cat_berita",
+    categoryName: "Berita Madrasah",
+    categorySlug: "berita-madrasah",
+    title: "Daftar Toko Penjual Seragam dan Buku Non-Kurikulum",
+    slug: "daftar-toko-penjual-seragam-dan-buku",
+    excerpt: "Informasi toko rekanan perlengkapan madrasah di sekitar area kecamatan.",
+    content: "Konten yang bersifat komersial pihak ketiga...",
+    tags: ["Akademik"],
+    status: "rejected",
+    rejectedAt: "2026-08-27T10:00:00.000Z",
+    rejectionReason: "Konten memuat promosi komersial pihak ketiga yang belum sesuai dengan panduan publikasi resmi portal madrasah. Mohon diedit dan difokuskan pada karya edukatif.",
+    views: 0,
+    createdAt: "2026-08-26T11:00:00.000Z",
+    updatedAt: "2026-08-27T10:00:00.000Z",
+  },
+];
+
+// --------------------------------------------------------
+// ORGANIZATION STRUCTURE (STRUKTUR ORGANISASI MADRASAH)
+// --------------------------------------------------------
+
+export const initialOrganizationStructure: OrganizationStructureItem[] = [
+  {
+    id: "org_kepala",
+    name: "Dr. H. Ahmad Fauzi, M.Pd.I.",
+    position: "Kepala Madrasah",
+    department: "Pimpinan",
+    level: 0,
+    order: 1,
+    description: "Penanggung jawab utama seluruh kebijakan akademik, mutu manajerial, dan kemitraan strategis madrasah.",
+    photo: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=300&auto=format&fit=crop&q=80",
+    isActive: true,
+    assignmentsSummary: ["Kepala Madrasah Terpadu", "Ketua Dewan Pengarah Kurikulum"],
+  },
+  {
+    id: "org_komite",
+    name: "H. Abdul Wahab, S.E.",
+    position: "Ketua Komite Madrasah",
+    department: "Komite",
+    level: 1,
+    parentId: "org_kepala",
+    order: 2,
+    description: "Mitra strategis perwakilan orang tua / wali siswa dalam pengawasan dan peningkatan mutu sarana madrasah.",
+    photo: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300&auto=format&fit=crop&q=80",
+    isActive: true,
+    assignmentsSummary: ["Ketua Komite Perwakilan Wali Murid"],
+  },
+  {
+    id: "org_tu",
+    name: "Drs. Bambang Sudarmono, M.M.",
+    position: "Kepala Tata Usaha",
+    department: "Tata Usaha",
+    level: 1,
+    parentId: "org_kepala",
+    order: 3,
+    description: "Koordinator administrasi kepegawaian, keuangan, sistem basis data, dan tata kelola persuratan.",
+    photo: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=300&auto=format&fit=crop&q=80",
+    isActive: true,
+    assignmentsSummary: ["Kepala Tata Usaha", "Administrator Sistem smart MTs"],
+  },
+  {
+    id: "org_kurikulum",
+    name: "Siti Nurhaliza, M.Pd.",
+    position: "Waka Bidang Kurikulum",
+    department: "Kurikulum",
+    level: 1,
+    parentId: "org_kepala",
+    teacherId: "teacher_01",
+    teacherName: "Siti Nurhaliza, M.Pd.",
+    order: 4,
+    description: "Pengembangan Kurikulum Merdeka Fase D, penyusunan jadwal KBM, supervisi asesmen, dan koordinasi CBT & e-Rapor.",
+    photo: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=300&auto=format&fit=crop&q=80",
+    isActive: true,
+    assignmentsSummary: ["Guru Matematika", "Waka Kurikulum", "Wali Kelas VII-A", "Koordinator Literasi"],
+  },
+  {
+    id: "org_kesiswaan",
+    name: "Ahmad Shodiq, S.Pd.I.",
+    position: "Waka Bidang Kesiswaan",
+    department: "Kesiswaan",
+    level: 1,
+    parentId: "org_kepala",
+    teacherId: "teacher_04",
+    teacherName: "Ahmad Shodiq, S.Pd.I.",
+    order: 5,
+    description: "Pembinaan karakter siswa, tata tertib madrasah, Masa Ta'aruf (Matsama), serta pembinaan OSIS & ekstrakurikuler.",
+    photo: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=300&auto=format&fit=crop&q=80",
+    isActive: true,
+    assignmentsSummary: ["Guru PAI", "Waka Kesiswaan", "Pembina Pramuka", "Guru Piket Kamis"],
+  },
+  {
+    id: "org_sarpras",
+    name: "Arief Wibowo, S.Si., M.Sc.",
+    position: "Waka Sarana & Prasarana",
+    department: "Sarana Prasarana",
+    level: 1,
+    parentId: "org_kepala",
+    teacherId: "teacher_02",
+    teacherName: "Arief Wibowo, S.Si., M.Sc.",
+    order: 6,
+    description: "Pengelolaan laboratorium sains & IT, sarana smart classroom, perpustakaan digital, dan fasilitas madrasah.",
+    photo: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80",
+    isActive: true,
+    assignmentsSummary: ["Guru IPA", "Waka Sarana Prasarana", "Kepala Lab IPA & Komputer", "Guru Piket Selasa"],
+  },
+  {
+    id: "org_humas",
+    name: "Dewi Lestari, S.Pd.",
+    position: "Waka Humas & Kemitraan",
+    department: "Humas",
+    level: 1,
+    parentId: "org_kepala",
+    teacherId: "teacher_03",
+    teacherName: "Dewi Lestari, S.Pd.",
+    order: 7,
+    description: "Publikasi portal resmi madrasah, komunikasi masyarakat, serta kemitraan instansi dan perguruan tinggi.",
+    photo: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=300&auto=format&fit=crop&q=80",
+    isActive: true,
+    assignmentsSummary: ["Guru Bahasa Indonesia", "Waka Humas", "Wali Kelas VIII-A", "Guru Piket Rabu"],
+  },
+  {
+    id: "org_tahfidz",
+    name: "Ridwan Kamil, S.Q., M.Ag.",
+    position: "Koordinator Program Tahfidz & Keagamaan",
+    department: "Kurikulum",
+    level: 2,
+    parentId: "org_kurikulum",
+    teacherId: "teacher_05",
+    teacherName: "Ridwan Kamil, S.Q., M.Ag.",
+    order: 8,
+    description: "Pembimbingan setoran hafalan Al-Qur'an (Juz 30 & 1-5), tahsin tajwid, dan pembiasaan ibadah harian santri.",
+    photo: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300&auto=format&fit=crop&q=80",
+    isActive: true,
+    assignmentsSummary: ["Guru Al-Qur'an Hadits", "Pembina Tahfidz", "Guru Piket Jumat"],
+  },
+  {
+    id: "org_dewan_guru",
+    name: "Dewan Guru & Wali Kelas sMTs",
+    position: "Pendidik & Pembimbing Rombel",
+    department: "Dewan Guru",
+    level: 3,
+    parentId: "org_kurikulum",
+    order: 9,
+    description: "Tim pendidik profesional berdedikasi tinggi mengampu seluruh mata pelajaran Kurikulum Merdeka Fase D.",
+    photo: "https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=300&auto=format&fit=crop&q=80",
+    isActive: true,
+    assignmentsSummary: ["Wali Kelas VII, VIII, IX", "Pengampu Mata Pelajaran Terpadu"],
+  },
+  {
+    id: "org_osis",
+    name: "Pengurus OSIS & MPK smart MTs",
+    position: "Organisasi Siswa Intra Madrasah",
+    department: "Kesiswaan & Siswa",
+    level: 4,
+    parentId: "org_kesiswaan",
+    order: 10,
+    description: "Wadah kepemimpinan, kepedulian sosial, serta kreativitas seluruh peserta didik smart MTs.",
+    photo: "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=300&auto=format&fit=crop&q=80",
+    isActive: true,
+    assignmentsSummary: ["Mitra Kesiswaan", "Pelaksana Acara Siswa"],
+  },
+];
+
+// --------------------------------------------------------
+// SAMPLE CONTACT MESSAGES
+// --------------------------------------------------------
+
+export const initialContactMessages: ContactMessage[] = [
+  {
+    id: "msg_01",
+    name: "Drs. Hendra Gunawan",
+    email: "hendra.gunawan@gmail.com",
+    phone: "081288997766",
+    subject: "Informasi Pendaftaran Siswa Baru (PPDB) TP 2026/2027",
+    message: "Assalamu'alaikum, kami ingin menanyakan jadwal pendaftaran jalur prestasi dan tahfidz untuk putra kami. Terima kasih.",
+    isRead: false,
+    createdAt: "2026-08-28T09:15:00.000Z",
+  },
+  {
+    id: "msg_02",
+    name: "Ibu Rahmawati, S.Pd.",
+    email: "rahmawati.mats@kemenag.go.id",
+    phone: "081399887711",
+    subject: "Permohonan Studi Tiru Sistem Absensi QR smart MTs",
+    message: "Salam silaturahmi. Madrasah kami tertarik untuk melakukan studi tiru digitalisasi smart MTs. Mohon arahan prosedur kunjungannya.",
+    isRead: true,
+    createdAt: "2026-08-26T14:30:00.000Z",
+  },
+];
+

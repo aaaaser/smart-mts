@@ -18,6 +18,8 @@ import {
   CreditCard,
   X,
   ShieldCheck,
+  Globe,
+  Newspaper,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -27,7 +29,7 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenAIAssistant }) => {
-  const { currentUser, activeTab, setActiveTab, teacherDuties } = useApp();
+  const { currentUser, activeTab, setActiveTab, teacherDuties, navigateToPublic, blogPosts } = useApp();
 
   const role = currentUser?.role || "admin";
 
@@ -40,11 +42,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenAIAssis
   const isGuruPiket = myDuties.some((d) => d.type === "guru_piket");
   const isPembinaEkskul = myDuties.some((d) => d.type === "pembina_ekskul");
 
+  const countPendingBlog = blogPosts.filter((p) => p.status === "submitted").length;
+
   const adminMenu = {
     main: [
       { id: "dashboard", label: "Dashboard Utama", icon: <LayoutDashboard className="w-4 h-4" /> },
       { id: "master", label: "Data Master", icon: <Users className="w-4 h-4" /> },
       { id: "duties", label: "Penugasan Guru", icon: <Award className="w-4 h-4" />, badge: "SK" },
+      { id: "blog_admin", label: "Manajemen Blog & Web", icon: <Newspaper className="w-4 h-4" />, badge: countPendingBlog > 0 ? `${countPendingBlog} Baru` : undefined },
       { id: "attendance", label: "Presensi QR Terpadu", icon: <QrCode className="w-4 h-4" />, badge: "QR" },
       { id: "curriculum", label: "Kurikulum & CP/KD", icon: <BookOpen className="w-4 h-4" /> },
       { id: "questions", label: "Bank Soal", icon: <FileQuestion className="w-4 h-4" /> },
@@ -64,6 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenAIAssis
   const guruMenu = {
     main: [
       { id: "dashboard", label: "Dashboard Guru", icon: <LayoutDashboard className="w-4 h-4" /> },
+      { id: "blog_teacher", label: "Blog Saya", icon: <Newspaper className="w-4 h-4" /> },
       { id: "attendance", label: "Presensi QR Terpadu", icon: <QrCode className="w-4 h-4" />, badge: "Scan" },
       { id: "schedules", label: "Jadwal Mengajar", icon: <Calendar className="w-4 h-4" /> },
       ...(myDuties.length > 0
@@ -297,6 +303,25 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenAIAssis
               })}
             </>
           )}
+
+          {/* Website Publik External Link */}
+          <div className="pt-2">
+            <button
+              onClick={() => {
+                navigateToPublic("home");
+                onClose();
+              }}
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-emerald-800 bg-emerald-50/60 hover:bg-emerald-100/70 border border-emerald-200/60 transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <Globe className="w-4 h-4 text-emerald-600" />
+                <span>Website Depan</span>
+              </div>
+              <span className="text-[9px] bg-emerald-200/80 text-emerald-900 px-1.5 py-0.5 rounded font-bold">
+                PUBLIC
+              </span>
+            </button>
+          </div>
         </nav>
 
         {/* User Card at bottom with QR Code quick toggle */}

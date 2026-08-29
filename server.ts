@@ -17,6 +17,9 @@ import { assignmentsRouter } from "./src/server/routes/assignments.routes";
 import { gradesRouter } from "./src/server/routes/grades.routes";
 import { raporRouter } from "./src/server/routes/rapor.routes";
 import { systemRouter } from "./src/server/routes/system.routes";
+import { blogRouter } from "./src/server/routes/blog.routes";
+import { organizationRouter } from "./src/server/routes/organization.routes";
+import { contactRouter } from "./src/server/routes/contact.routes";
 import { checkDatabaseConnection } from "./src/lib/prisma";
 
 dotenv.config();
@@ -42,6 +45,9 @@ app.use("/api/assignments", assignmentsRouter);
 app.use("/api/grades", gradesRouter);
 app.use("/api/rapor", raporRouter);
 app.use("/api/system", systemRouter);
+app.use("/api/blog", blogRouter);
+app.use("/api/organization", organizationRouter);
+app.use("/api/contact", contactRouter);
 
 // Lazy initialize GenAI client
 function getGenAI() {

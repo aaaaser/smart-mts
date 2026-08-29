@@ -152,6 +152,14 @@ enum ReportCardStatus {
   FINALIZED
 }
 
+enum BlogStatus {
+  DRAFT
+  SUBMITTED
+  PUBLISHED
+  REJECTED
+  ARCHIVED
+}
+
 // --------------------------------------------------------
 // USER & IDENTITY
 // --------------------------------------------------------
@@ -179,6 +187,7 @@ model User {
   scannedAttendanceRecords  AttendanceRecord[]  @relation("AttendanceScanner")
   notifications             Notification[]
   auditLogs                 AuditLog[]
+  blogPosts                 BlogPost[]
 
   @@index([username])
   @@index([email])
@@ -228,6 +237,7 @@ model Teacher {
   createdExams       Exam[]
   extracurriculars   Extracurricular[]   @relation("LeadTeacher")
   attendanceSessions AttendanceSession[]
+  organizationPositions OrganizationStructure[]
 
   @@index([fullName])
   @@index([nip])
@@ -1131,22 +1141,27 @@ model AuditLog {
 }
 
 // --------------------------------------------------------
-// SCHOOL SETTINGS
+// SCHOOL SETTINGS & PUBLIC PROFILE
 // --------------------------------------------------------
 
 model SchoolSetting {
   id                  String   @id @default(uuid())
-  name                String   @default("MTs Negeri 1 Jakarta")
+  name                String   @default("smart MTs (sMTs)")
   npsn                String   @default("20108921")
   nss                 String?  @default("121131710001")
   accreditation       String   @default("A (Unggul)")
-  address             String   @default("Jl. Madrasah No. 10, Jakarta Selatan")
+  tagline             String   @default("Sistem Manajemen Madrasah Terpadu")
+  motto               String   @default("Belajar, berkembang, dan berprestasi bersama.")
+  vision              String   @default("Mewujudkan generasi madrasah yang unggul dalam Imtaq dan Iptek, berakhlak mulia, berkarakter moderat, dan kompetitif global.")
+  mission             String   @default("1. Menyelenggarakan pendidikan madrasah terpadu berkualitas.\n2. Mengintegrasikan teknologi cerdas dalam pembelajaran.\n3. Menumbuhkan budaya literasi dan tahfidz.\n4. Membina prestasi akademik dan non-akademik berdaya saing.")
+  values              String   @default("INTEGRITAS, ISLAMI, INOVATIF, INKLUSIF, INSPIRATIF")
+  address             String   @default("Jl. Madrasah Terpadu No. 12, Kebayoran Baru, Jakarta Selatan")
   phone               String   @default("(021) 7890123")
-  email               String   @default("info@mtsn1jakarta.sch.id")
-  website             String   @default("https://mtsn1jakarta.sch.id")
+  email               String   @default("info@smts.sch.id")
+  website             String   @default("https://smts.sch.id")
   logoUrl             String?
-  principalName       String   @default("Drs. H. Ahmad Dahlan, M.Pd.I")
-  principalNip        String   @default("197505122000031002")
+  principalName       String   @default("Dr. H. Ahmad Fauzi, M.Pd.I.")
+  principalNip        String   @default("197205141998031002")
   activeAcademicYear  String   @default("2025/2026")
   activeSemester      String   @default("Ganjil")
   activeCurriculum    String   @default("merdeka")
@@ -1154,6 +1169,124 @@ model SchoolSetting {
   schoolStartTime     String   @default("07:00")
   schoolLateLimit     String   @default("07:15")
   schoolEndTime       String   @default("15:00")
+  operatingHours      String   @default("Senin - Jumat: 06.30 - 15.30 WIB | Sabtu: 07.00 - 12.00 WIB")
+  socialMedia         String?  // JSON e.g. {"facebook":"@smts.official","instagram":"@smts_madrasah","youtube":"@sMTsChannel"}
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }
+
+// --------------------------------------------------------
+// BLOG & PUBLIC PUBLICATION SYSTEM
+// --------------------------------------------------------
+
+model BlogCategory {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  slug        String     @unique
+  description String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  posts BlogPost[]
+
+  @@index([slug])
+}
+
+model BlogTag {
+  id        String        @id @default(uuid())
+  name      String        @unique
+  slug      String        @unique
+  createdAt DateTime      @default(now())
+
+  postTags BlogPostTag[]
+
+  @@index([slug])
+}
+
+model BlogPost {
+  id              String      @id @default(uuid())
+  authorId        String
+  author          User        @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  categoryId      String
+  category        BlogCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  title           String
+  slug            String      @unique
+  excerpt         String
+  content         String
+  coverImage      String?
+  status          BlogStatus  @default(DRAFT)
+  views           Int         @default(0)
+  isFeatured      Boolean     @default(false)
+  submittedAt     DateTime?
+  publishedAt     DateTime?
+  rejectedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  postTags BlogPostTag[]
+
+  @@index([slug])
+  @@index([status])
+  @@index([publishedAt])
+  @@index([categoryId])
+  @@index([authorId])
+}
+
+model BlogPostTag {
+  postId String
+  post   BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tagId  String
+  tag    BlogTag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([postId, tagId])
+  @@index([postId])
+  @@index([tagId])
+}
+
+// --------------------------------------------------------
+// ORGANIZATION STRUCTURE (STRUKTUR ORGANISASI MADRASAH)
+// --------------------------------------------------------
+
+model OrganizationStructure {
+  id          String                  @id @default(uuid())
+  name        String                  // e.g. "Dr. H. Ahmad Fauzi, M.Pd.I."
+  position    String                  // e.g. "Kepala Madrasah", "Waka Kurikulum", "Kepala Tata Usaha"
+  department  String?                 @default("Pimpinan") // Pimpinan, TU, Komite, Kurikulum, Kesiswaan, Sarpras, Humas, GTK
+  level       Int                     @default(1) // 0: Kepala, 1: Waka/Komite/TU, 2: Koordinator, 3: Guru, 4: Siswa
+  parentId    String?
+  parent      OrganizationStructure?  @relation("StructureHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children    OrganizationStructure[] @relation("StructureHierarchy")
+  teacherId   String?
+  teacher     Teacher?                @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  description String?
+  photo       String?
+  order       Int                     @default(0)
+  isActive    Boolean                 @default(true)
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+
+  @@index([parentId])
+  @@index([teacherId])
+  @@index([order])
+  @@index([level])
+}
+
+// --------------------------------------------------------
+// CONTACT MESSAGES (PESAN HUBUNGI KAMI)
+// --------------------------------------------------------
+
+model ContactMessage {
+  id        String   @id @default(uuid())
+  name      String
+  email     String
+  phone     String?
+  subject   String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([isRead])
+  @@index([createdAt])
+}
+

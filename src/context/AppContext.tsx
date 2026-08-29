@@ -22,6 +22,13 @@ import {
   TeacherDuty,
   Extracurricular,
   AttendanceContextMode,
+  PublicRoute,
+  AppViewMode,
+  BlogPost,
+  BlogCategory,
+  BlogTag,
+  OrganizationStructureItem,
+  ContactMessage,
 } from "../types";
 import {
   initialSchoolProfile,
@@ -44,6 +51,11 @@ import {
   initialAuditLogs,
   initialTeacherDuties,
   initialExtracurriculars,
+  initialBlogCategories,
+  initialBlogTags,
+  initialBlogPosts,
+  initialOrganizationStructure,
+  initialContactMessages,
 } from "../data/initialData";
 import { generateSecureQRToken } from "../lib/qrHelper";
 
@@ -219,11 +231,66 @@ interface AppContextType {
   // Quick navigation helpers
   activeTab: string;
   setActiveTab: (tab: string) => void;
+
+  // Public Website Routing & Modes
+  publicRoute: PublicRoute;
+  setPublicRoute: (route: PublicRoute) => void;
+  blogDetailSlug: string;
+  setBlogDetailSlug: (slug: string) => void;
+  appMode: AppViewMode;
+  setAppMode: (mode: AppViewMode) => void;
+  navigateToPublic: (route: PublicRoute, slug?: string) => void;
+  navigateToDashboard: (tab?: string) => void;
+
+  // Public & Teacher/Admin Blog
+  blogPosts: BlogPost[];
+  blogCategories: BlogCategory[];
+  blogTags: BlogTag[];
+  addBlogPost: (post: Omit<BlogPost, "id" | "createdAt" | "updatedAt" | "views">) => BlogPost;
+  updateBlogPost: (id: string, updates: Partial<BlogPost>) => void;
+  submitBlogPostForReview: (id: string) => void;
+  reviewBlogPost: (id: string, action: "approve" | "reject" | "archive", rejectionReason?: string, isFeatured?: boolean) => void;
+  deleteBlogPost: (id: string) => void;
+  toggleFeaturedPost: (id: string) => void;
+  addBlogCategory: (name: string, description?: string) => void;
+
+  // Organization Structure
+  organizationStructure: OrganizationStructureItem[];
+  addOrganizationMember: (member: Omit<OrganizationStructureItem, "id">) => void;
+  updateOrganizationMember: (id: string, updates: Partial<OrganizationStructureItem>) => void;
+  deleteOrganizationMember: (id: string) => void;
+
+  // Contact Inquiries
+  contactMessages: ContactMessage[];
+  submitContactMessage: (name: string, email: string, phone: string, subject: string, message: string) => { success: boolean; message: string };
+  markContactMessageRead: (id: string) => void;
+  deleteContactMessage: (id: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const LOCAL_STORAGE_KEY = "edusmart_school_db_v1";
+
+// Helper to determine initial view mode and route from browser location
+const getInitialRouteFromLocation = (): { mode: AppViewMode; route: PublicRoute; slug: string } => {
+  if (typeof window === "undefined") {
+    return { mode: "public", route: "home", slug: "" };
+  }
+  const path = window.location.pathname;
+  if (path === "/struktur") return { mode: "public", route: "structure", slug: "" };
+  if (path === "/blog") return { mode: "public", route: "blog", slug: "" };
+  if (path.startsWith("/blog/")) {
+    const slug = decodeURIComponent(path.replace("/blog/", ""));
+    return { mode: "public", route: "blog_detail", slug };
+  }
+  if (path === "/kontak") return { mode: "public", route: "contact", slug: "" };
+  if (path === "/login") return { mode: "public", route: "login", slug: "" };
+  if (path === "/admin" || path === "/teacher" || path === "/student" || path === "/parent" || path.startsWith("/dashboard")) {
+    return { mode: "dashboard", route: "home", slug: "" };
+  }
+  // Default URL "/" -> Always show Public Website Homepage first
+  return { mode: "public", route: "home", slug: "" };
+};
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Load initial or stored data
@@ -244,7 +311,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const [currentUser, setCurrentUser] = useState<User | null>(() => loadStored("currentUser", initialUsers[0]));
+  // Initial routing state
+  const initialNav = getInitialRouteFromLocation();
+  const [publicRoute, setPublicRoute] = useState<PublicRoute>(initialNav.route);
+  const [blogDetailSlug, setBlogDetailSlug] = useState<string>(initialNav.slug);
+  const [appMode, setAppMode] = useState<AppViewMode>(initialNav.mode);
+
+  const [currentUser, setCurrentUser] = useState<User | null>(() => loadStored("currentUser", null));
   const [schoolProfile, setSchoolProfile] = useState<SchoolProfile>(() => loadStored("profile", initialSchoolProfile));
   const [users, setUsers] = useState<User[]>(() => loadStored("users", initialUsers));
   const [classes, setClasses] = useState<ClassRoom[]>(() => loadStored("classes", initialClasses));
@@ -265,6 +338,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => loadStored("auditLogs", initialAuditLogs));
   const [teacherDuties, setTeacherDuties] = useState<TeacherDuty[]>(() => loadStored("teacherDuties", initialTeacherDuties));
   const [extracurriculars, setExtracurriculars] = useState<Extracurricular[]>(() => loadStored("extracurriculars", initialExtracurriculars));
+
+  // Public Website Data States
+  const [blogPosts, setBlogPosts] = useState<BlogPost[]>(() => loadStored("blogPosts", initialBlogPosts));
+  const [blogCategories, setBlogCategories] = useState<BlogCategory[]>(() => loadStored("blogCategories", initialBlogCategories));
+  const [blogTags, setBlogTags] = useState<BlogTag[]>(() => loadStored("blogTags", initialBlogTags));
+  const [organizationStructure, setOrganizationStructure] = useState<OrganizationStructureItem[]>(() => loadStored("organizationStructure", initialOrganizationStructure));
+  const [contactMessages, setContactMessages] = useState<ContactMessage[]>(() => loadStored("contactMessages", initialContactMessages));
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [activeTab, setActiveTab] = useState<string>("dashboard");
@@ -292,6 +372,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => saveToLocal("auditLogs", auditLogs), [auditLogs]);
   useEffect(() => saveToLocal("teacherDuties", teacherDuties), [teacherDuties]);
   useEffect(() => saveToLocal("extracurriculars", extracurriculars), [extracurriculars]);
+  useEffect(() => saveToLocal("blogPosts", blogPosts), [blogPosts]);
+  useEffect(() => saveToLocal("blogCategories", blogCategories), [blogCategories]);
+  useEffect(() => saveToLocal("blogTags", blogTags), [blogTags]);
+  useEffect(() => saveToLocal("organizationStructure", organizationStructure), [organizationStructure]);
+  useEffect(() => saveToLocal("contactMessages", contactMessages), [contactMessages]);
+
+  // Handle browser back/forward buttons (popstate)
+  useEffect(() => {
+    const handlePopState = () => {
+      const nav = getInitialRouteFromLocation();
+      setAppMode(nav.mode);
+      setPublicRoute(nav.route);
+      setBlogDetailSlug(nav.slug);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  // Navigation handlers
+  const navigateToPublic = useCallback((route: PublicRoute, slug?: string) => {
+    setAppMode("public");
+    setPublicRoute(route);
+    if (slug) setBlogDetailSlug(slug);
+
+    let path = "/";
+    if (route === "structure") path = "/struktur";
+    else if (route === "blog") path = "/blog";
+    else if (route === "blog_detail" && slug) path = `/blog/${slug}`;
+    else if (route === "contact") path = "/kontak";
+    else if (route === "login") path = "/login";
+
+    if (typeof window !== "undefined" && window.location.pathname !== path) {
+      window.history.pushState({}, "", path);
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  const navigateToDashboard = useCallback((tab?: string) => {
+    if (!currentUser) {
+      navigateToPublic("login");
+      return;
+    }
+    setAppMode("dashboard");
+    if (tab) setActiveTab(tab);
+    else setActiveTab("dashboard");
+
+    const rolePath = currentUser.role === "admin" ? "/admin" : currentUser.role === "guru" ? "/teacher" : currentUser.role === "siswa" ? "/student" : "/parent";
+    if (typeof window !== "undefined" && window.location.pathname !== rolePath) {
+      window.history.pushState({}, "", rolePath);
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [currentUser, navigateToPublic]);
 
   // Toast Helper
   const showToast = useCallback((type: ToastMessage["type"], title: string, message: string) => {
@@ -1392,6 +1524,189 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast("success", "Rapor Difinalisasi", "Dokumen e-rapor telah siap dicetak / diunduh.");
   };
 
+  // Blog Post Management (Guru & Admin)
+  const addBlogPost = (postData: Omit<BlogPost, "id" | "createdAt" | "updatedAt" | "views">): BlogPost => {
+    const newPost: BlogPost = {
+      id: `post_${Date.now()}`,
+      ...postData,
+      views: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setBlogPosts((prev) => [newPost, ...prev]);
+    addAuditLog("Buat Artikel Blog", `Membuat artikel baru: "${newPost.title}" (${newPost.status})`);
+    showToast(
+      "success",
+      newPost.status === "submitted" ? "Artikel Diajukan" : "Draft Disimpan",
+      newPost.status === "submitted"
+        ? "Artikel berhasil dikirimkan dan menunggu review Admin."
+        : "Draft artikel berhasil disimpan."
+    );
+    return newPost;
+  };
+
+  const updateBlogPost = (id: string, updates: Partial<BlogPost>) => {
+    setBlogPosts((prev) =>
+      prev.map((p) =>
+        p.id === id
+          ? {
+              ...p,
+              ...updates,
+              updatedAt: new Date().toISOString(),
+            }
+          : p
+      )
+    );
+    addAuditLog("Update Artikel Blog", `Memperbarui artikel ID: ${id}`);
+    showToast("success", "Artikel Diperbarui", "Perubahan artikel blog berhasil disimpan.");
+  };
+
+  const submitBlogPostForReview = (id: string) => {
+    setBlogPosts((prev) =>
+      prev.map((p) =>
+        p.id === id
+          ? {
+              ...p,
+              status: "submitted",
+              submittedAt: new Date().toISOString(),
+              rejectionReason: undefined,
+              updatedAt: new Date().toISOString(),
+            }
+          : p
+      )
+    );
+    addAuditLog("Pengajuan Review Blog", `Mengajukan artikel ID: ${id} untuk review Administrator`);
+    showToast("success", "Artikel Diajukan", "Artikel berhasil diajukan untuk ditinjau oleh Administrator.");
+  };
+
+  const reviewBlogPost = (
+    id: string,
+    action: "approve" | "reject" | "archive",
+    rejectionReason?: string,
+    isFeatured?: boolean
+  ) => {
+    setBlogPosts((prev) =>
+      prev.map((p) => {
+        if (p.id !== id) return p;
+        if (action === "approve") {
+          return {
+            ...p,
+            status: "published",
+            publishedAt: p.publishedAt || new Date().toISOString(),
+            rejectionReason: undefined,
+            isFeatured: isFeatured !== undefined ? isFeatured : p.isFeatured,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        if (action === "reject") {
+          return {
+            ...p,
+            status: "rejected",
+            rejectedAt: new Date().toISOString(),
+            rejectionReason: rejectionReason || "Perlu revisi konten.",
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        if (action === "archive") {
+          return {
+            ...p,
+            status: "archived",
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return p;
+      })
+    );
+    const actionLabel = action === "approve" ? "Disetujui & Diterbitkan" : action === "reject" ? "Ditolak / Perlu Revisi" : "Diarsipkan";
+    addAuditLog("Review Artikel Blog", `Admin melakukan ${action} pada artikel ID: ${id}`);
+    showToast("success", "Status Artikel Berubah", `Artikel berhasil ${actionLabel}.`);
+  };
+
+  const deleteBlogPost = (id: string) => {
+    setBlogPosts((prev) => prev.filter((p) => p.id !== id));
+    addAuditLog("Hapus Artikel Blog", `Menghapus artikel ID: ${id}`);
+    showToast("info", "Artikel Dihapus", "Artikel blog telah dihapus dari sistem.");
+  };
+
+  const toggleFeaturedPost = (id: string) => {
+    setBlogPosts((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, isFeatured: !p.isFeatured, updatedAt: new Date().toISOString() } : p))
+    );
+    showToast("success", "Status Featured Diperbarui", "Headline artikel berhasil diubah.");
+  };
+
+  const addBlogCategory = (name: string, description?: string) => {
+    const slug = name.toLowerCase().trim().replace(/\s+/g, "-").replace(/[^\w\-]+/g, "");
+    const newCat: BlogCategory = {
+      id: `cat_${Date.now()}`,
+      name,
+      slug,
+      description,
+      count: 0,
+    };
+    setBlogCategories((prev) => [...prev, newCat]);
+    showToast("success", "Kategori Ditambahkan", `Kategori "${name}" berhasil dibuat.`);
+  };
+
+  // Organization Structure Management
+  const addOrganizationMember = (member: Omit<OrganizationStructureItem, "id">) => {
+    const newItem: OrganizationStructureItem = {
+      id: `org_${Date.now()}`,
+      ...member,
+    };
+    setOrganizationStructure((prev) => [...prev, newItem]);
+    addAuditLog("Tambah Struktur Organisasi", `Menambahkan posisi ${newItem.position} (${newItem.name})`);
+    showToast("success", "Posisi Ditambahkan", `Posisi ${newItem.position} berhasil ditambahkan ke bagan organisasi.`);
+  };
+
+  const updateOrganizationMember = (id: string, updates: Partial<OrganizationStructureItem>) => {
+    setOrganizationStructure((prev) => prev.map((item) => (item.id === id ? { ...item, ...updates } : item)));
+    addAuditLog("Update Struktur Organisasi", `Memperbarui posisi struktur ID: ${id}`);
+    showToast("success", "Bagan Diperbarui", "Data struktur organisasi berhasil diperbarui.");
+  };
+
+  const deleteOrganizationMember = (id: string) => {
+    setOrganizationStructure((prev) => prev.filter((item) => item.id !== id));
+    addAuditLog("Hapus Struktur Organisasi", `Menghapus posisi ID: ${id}`);
+    showToast("info", "Posisi Dihapus", "Posisi telah dihapus dari struktur organisasi.");
+  };
+
+  // Contact Inquiries Management
+  const submitContactMessage = (name: string, email: string, phone: string, subject: string, message: string) => {
+    const newMsg: ContactMessage = {
+      id: `msg_${Date.now()}`,
+      name,
+      email,
+      phone,
+      subject,
+      message,
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    };
+    setContactMessages((prev) => [newMsg, ...prev]);
+
+    // Send to backend API asynchronously
+    fetch("/api/contact/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, email, phone, subject, message }),
+    }).catch((err) => console.log("Contact API submission fallback to local:", err));
+
+    showToast("success", "Pesan Terkirim", "Terima kasih! Pesan dan pertanyaan Anda telah diterima pihak madrasah.");
+    return { success: true, message: "Pesan berhasil dikirim." };
+  };
+
+  const markContactMessageRead = (id: string) => {
+    setContactMessages((prev) => prev.map((m) => (m.id === id ? { ...m, isRead: true } : m)));
+    fetch(`/api/contact/messages/${id}/read`, { method: "PUT" }).catch(() => {});
+  };
+
+  const deleteContactMessage = (id: string) => {
+    setContactMessages((prev) => prev.filter((m) => m.id !== id));
+    fetch(`/api/contact/messages/${id}`, { method: "DELETE" }).catch(() => {});
+    showToast("info", "Pesan Dihapus", "Pesan kontak berhasil dihapus.");
+  };
+
   // Reset & Backup Data
   const resetToDefaultData = () => {
     localStorage.clear();
@@ -1563,6 +1878,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         importDatabaseJSON,
         activeTab,
         setActiveTab,
+        publicRoute,
+        setPublicRoute,
+        blogDetailSlug,
+        setBlogDetailSlug,
+        appMode,
+        setAppMode,
+        navigateToPublic,
+        navigateToDashboard,
+        blogPosts,
+        blogCategories,
+        blogTags,
+        addBlogPost,
+        updateBlogPost,
+        submitBlogPostForReview,
+        reviewBlogPost,
+        deleteBlogPost,
+        toggleFeaturedPost,
+        addBlogCategory,
+        organizationStructure,
+        addOrganizationMember,
+        updateOrganizationMember,
+        deleteOrganizationMember,
+        contactMessages,
+        submitContactMessage,
+        markContactMessageRead,
+        deleteContactMessage,
       }}
     >
       {children}

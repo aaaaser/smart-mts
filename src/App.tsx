@@ -17,15 +17,72 @@ import { SettingsView } from "./components/settings/SettingsView";
 import { AIAssistantDrawer } from "./components/ai/AIAssistantDrawer";
 import { ToastContainer } from "./components/common/ToastContainer";
 
-const MainLayout: React.FC = () => {
+// Public Website Components
+import { PublicNavbar } from "./components/public/PublicNavbar";
+import { PublicFooter } from "./components/public/PublicFooter";
+import { PublicHomeView } from "./components/public/PublicHomeView";
+import { PublicStructureView } from "./components/public/PublicStructureView";
+import { PublicBlogListView } from "./components/public/PublicBlogListView";
+import { PublicBlogDetailView } from "./components/public/PublicBlogDetailView";
+import { PublicContactView } from "./components/public/PublicContactView";
+import { PublicLoginView } from "./components/public/PublicLoginView";
+
+// Blog Dashboard Management Components
+import { TeacherBlogManagementView } from "./components/blog/TeacherBlogManagementView";
+import { AdminBlogManagementView } from "./components/blog/AdminBlogManagementView";
+
+const PublicLayout: React.FC = () => {
+  const { publicRoute } = useApp();
+
+  // If login route, show standalone login page
+  if (publicRoute === "login") {
+    return <PublicLoginView />;
+  }
+
+  const renderPublicContent = () => {
+    switch (publicRoute) {
+      case "home":
+        return <PublicHomeView />;
+      case "structure":
+        return <PublicStructureView />;
+      case "blog":
+        return <PublicBlogListView />;
+      case "blog_detail":
+        return <PublicBlogDetailView />;
+      case "contact":
+        return <PublicContactView />;
+      default:
+        return <PublicHomeView />;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900 antialiased selection:bg-emerald-700 selection:text-white">
+      {/* Public Header */}
+      <PublicNavbar />
+
+      {/* Main Public View */}
+      <main className="flex-1">{renderPublicContent()}</main>
+
+      {/* Public Footer */}
+      <PublicFooter />
+    </div>
+  );
+};
+
+const DashboardLayout: React.FC = () => {
   const { activeTab, currentUser } = useApp();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isAIDrawerOpen, setIsAIDrawerOpen] = useState(false);
 
-  const renderContent = () => {
+  const renderDashboardContent = () => {
     switch (activeTab) {
       case "dashboard":
         return currentUser?.role === "siswa" ? <StudentDashboardView /> : <DashboardView />;
+      case "blog_admin":
+        return <AdminBlogManagementView />;
+      case "blog_teacher":
+        return <TeacherBlogManagementView />;
       case "duties":
       case "teacher_duties":
         return <TeacherDutyManagementView />;
@@ -77,23 +134,32 @@ const MainLayout: React.FC = () => {
 
         {/* Dynamic Main Workspace */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 lg:ml-64 transition-all duration-300">
-          <div className="max-w-7xl mx-auto">{renderContent()}</div>
+          <div className="max-w-7xl mx-auto">{renderDashboardContent()}</div>
         </main>
       </div>
 
       {/* Floating AI Drawer */}
       <AIAssistantDrawer isOpen={isAIDrawerOpen} onClose={() => setIsAIDrawerOpen(false)} />
-
-      {/* Toast Alert System */}
-      <ToastContainer />
     </div>
+  );
+};
+
+const RootApp: React.FC = () => {
+  const { appMode } = useApp();
+
+  return (
+    <>
+      {appMode === "public" ? <PublicLayout /> : <DashboardLayout />}
+      {/* Universal Toast Alert System */}
+      <ToastContainer />
+    </>
   );
 };
 
 export default function App() {
   return (
     <AppProvider>
-      <MainLayout />
+      <RootApp />
     </AppProvider>
   );
 }
