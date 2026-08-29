@@ -73,7 +73,7 @@ async function main() {
 
   // Hash default passwords
   const passwordAdmin = await bcrypt.hash("admin123", 10);
-  const passwordGuru = await bcrypt.hash("guru123", 10);
+  const passwordGuru = await bcrypt.hash("smtslogin", 10);
   const passwordSiswa = await bcrypt.hash("siswa123", 10);
 
   // 2. School Settings
@@ -279,6 +279,45 @@ async function main() {
       mainSubjectCode: "IPA-01",
       address: "Jl. Margasatwa No. 19, Ragunan",
     },
+    {
+      username: "shodiq",
+      email: "shodiq@mtsn1jakarta.sch.id",
+      fullName: "Drs. Shodiq, M.Pd.",
+      nip: "197905152005011008",
+      nuptk: "1234567890123456",
+      nik: "3174051505790006",
+      gender: Gender.L,
+      phone: "081234567896",
+      employmentStatus: EmploymentStatus.PNS,
+      mainSubjectCode: "PAI-01",
+      address: "Jl. Kebagusan Raya No. 15, Jakarta Selatan",
+    },
+    {
+      username: "arief",
+      email: "arief@mtsn1jakarta.sch.id",
+      fullName: "Arief Rahman, S.Kom.",
+      nip: "198610102012031007",
+      nuptk: "2234567890123456",
+      nik: "3174051010860007",
+      gender: Gender.L,
+      phone: "081234567897",
+      employmentStatus: EmploymentStatus.GTY,
+      mainSubjectCode: "INF-01",
+      address: "Jl. Cilandak KKO No. 21, Jakarta Selatan",
+    },
+    {
+      username: "ridwan",
+      email: "ridwan@mtsn1jakarta.sch.id",
+      fullName: "H. Ridwan Fauzi, S.Ag.",
+      nip: "197812122004121006",
+      nuptk: "3234567890123456",
+      nik: "3174051212780008",
+      gender: Gender.L,
+      phone: "081234567898",
+      employmentStatus: EmploymentStatus.PNS,
+      mainSubjectCode: "PAI-01",
+      address: "Jl. Mampang Prapatan No. 32, Jakarta Selatan",
+    },
   ];
 
   const createdTeachers: Record<string, any> = {};
@@ -291,6 +330,7 @@ async function main() {
         passwordHash: passwordGuru,
         role: Role.TEACHER,
         isActive: true,
+        mustChangePassword: true,
         qrCodes: {
           create: {
             qrToken: generateRandomToken("SMTS-TCH"),
@@ -329,6 +369,32 @@ async function main() {
           semesterId: sem1.id,
         },
       });
+    }
+  }
+
+  // Automatic Validation of Required Teachers
+  const requiredTeacherKeys = [
+    "aisyah",
+    "fauzi",
+    "rahma",
+    "budi",
+    "dewi",
+    "shodiq",
+    "arief",
+    "ridwan",
+  ];
+
+  for (const key of requiredTeacherKeys) {
+    if (!createdTeachers[key]) {
+      throw new Error(
+        `Seed configuration error: teacher '${key}' was not created`
+      );
+    }
+
+    if (!createdTeachers[key].userId) {
+      throw new Error(
+        `Seed configuration error: teacher '${key}' has no userId`
+      );
     }
   }
 
@@ -1357,8 +1423,8 @@ Artikel ini menguraikan tahapan praktis penggabungan simulasi PhET dengan lembar
   console.log("--------------------------------------------------");
   console.log("Default Login Credentials for Testing:");
   console.log("👉 Admin   : username 'admin'   / password 'admin123'");
-  console.log("👉 Guru    : username 'aisyah'  / password 'guru123'");
-  console.log("👉 Siswa   : username 'siswa_242507001' / password 'siswa123'");
+  console.log("👉 Guru    : NIP '198203152008012015' (Nur Aisyah) / password 'smtslogin'");
+  console.log("👉 Siswa   : NIS '242507001' (Ahmad Fauzan) / password 'siswa123'");
   console.log("--------------------------------------------------");
 }
 
