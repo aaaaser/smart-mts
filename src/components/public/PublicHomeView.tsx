@@ -26,6 +26,7 @@ export const PublicHomeView: React.FC = () => {
   const {
     schoolProfile,
     blogPosts,
+    publicStats,
     navigateToPublic,
     navigateToDashboard,
     currentUser,
@@ -226,16 +227,16 @@ export const PublicHomeView: React.FC = () => {
             <div className="w-12 h-12 mx-auto rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3">
               <Users className="w-6 h-6" />
             </div>
-            <div className="text-3xl font-extrabold text-slate-900">480+</div>
+            <div className="text-3xl font-extrabold text-slate-900">{publicStats?.students || 480}+</div>
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mt-1">Siswa Aktif</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">Kelas VII, VIII, dan IX</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">T.A. {publicStats?.activeAcademicYear || "2025/2026"}</p>
           </div>
 
           <div className="bg-white rounded-2xl p-6 shadow-md border border-slate-100 text-center hover:shadow-lg transition-shadow">
             <div className="w-12 h-12 mx-auto rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center mb-3">
               <GraduationCap className="w-6 h-6" />
             </div>
-            <div className="text-3xl font-extrabold text-slate-900">42</div>
+            <div className="text-3xl font-extrabold text-slate-900">{publicStats?.teachers || 42}</div>
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mt-1">Dewan Pendidik & TU</p>
             <p className="text-[11px] text-slate-400 mt-0.5">Guru Profesional Bersertifikasi</p>
           </div>
@@ -244,18 +245,18 @@ export const PublicHomeView: React.FC = () => {
             <div className="w-12 h-12 mx-auto rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-3">
               <Laptop className="w-6 h-6" />
             </div>
-            <div className="text-3xl font-extrabold text-slate-900">16</div>
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mt-1">Smart Class & Lab</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">Lab IPA, Komputer & Bahasa</p>
+            <div className="text-3xl font-extrabold text-slate-900">{publicStats?.classes || 15}</div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mt-1">Rombongan Belajar</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">Fase D Kelas VII, VIII, IX</p>
           </div>
 
           <div className="bg-white rounded-2xl p-6 shadow-md border border-slate-100 text-center hover:shadow-lg transition-shadow">
             <div className="w-12 h-12 mx-auto rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3">
               <Award className="w-6 h-6" />
             </div>
-            <div className="text-3xl font-extrabold text-slate-900">45+</div>
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mt-1">Prestasi Juara</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">Tingkat Kota, Provinsi, & Nasional</p>
+            <div className="text-3xl font-extrabold text-slate-900">{publicStats?.extracurriculars || 10}</div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mt-1">Ekstrakurikuler & Ekskul</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">Pengembangan Minat & Bakat</p>
           </div>
         </div>
       </section>
@@ -278,12 +279,14 @@ export const PublicHomeView: React.FC = () => {
                   Kepala Madrasah
                 </span>
               </div>
-              <h3 className="text-lg font-bold text-white mt-2">Dr. H. Ahmad Fauzi, M.Pd.I.</h3>
+              <h3 className="text-lg font-bold text-white mt-2">
+                {schoolProfile.principalName || "Dr. H. Ahmad Fauzi, M.Pd.I."}
+              </h3>
               <p className="text-xs text-emerald-200 mt-1 font-medium">
-                NIP. 197503141999031002
+                NIP. {schoolProfile.principalNip || "197205141998031002"}
               </p>
               <p className="text-[11px] text-emerald-300/80 mt-2 italic">
-                "Pendidikan madrasah adalah ikhtiar menyalakan lentera iman dan memupuk kecerdasan akal budi."
+                "{schoolProfile.motto || "Pendidikan madrasah adalah ikhtiar menyalakan lentera iman dan memupuk kecerdasan akal budi."}"
               </p>
             </div>
 

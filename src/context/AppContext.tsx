@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { api, PublicStats } from "../lib/api";
 import {
   User,
   UserRole,
@@ -81,7 +82,7 @@ interface AppContextType {
   currentUser: User | null;
   setCurrentUser: (user: User | null) => void;
   loginAs: (role: UserRole, customUserId?: string) => void;
-  loginWithCredentials: (usernameOrEmail: string, pass: string) => boolean;
+  loginWithCredentials: (usernameOrEmail: string, pass: string, role?: string) => Promise<{ success: boolean; message: string; user?: User }>;
   logout: () => void;
 
   // School Profile
@@ -242,6 +243,11 @@ interface AppContextType {
   navigateToPublic: (route: PublicRoute, slug?: string) => void;
   navigateToDashboard: (tab?: string) => void;
 
+  // Dynamic Public Stats from PostgreSQL
+  publicStats: PublicStats;
+  isStatsLoading: boolean;
+  fetchPublicData: () => Promise<void>;
+
   // Public & Teacher/Admin Blog
   blogPosts: BlogPost[];
   blogCategories: BlogCategory[];
@@ -346,6 +352,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [organizationStructure, setOrganizationStructure] = useState<OrganizationStructureItem[]>(() => loadStored("organizationStructure", initialOrganizationStructure));
   const [contactMessages, setContactMessages] = useState<ContactMessage[]>(() => loadStored("contactMessages", initialContactMessages));
 
+  // Dynamic Public Stats from PostgreSQL Single Source of Truth
+  const [publicStats, setPublicStats] = useState<PublicStats>({
+    students: 480,
+    teachers: 42,
+    subjects: 18,
+    extracurriculars: 10,
+    classes: 15,
+    activeAcademicYear: "2025/2026",
+    activeSemester: "Ganjil",
+  });
+  const [isStatsLoading, setIsStatsLoading] = useState<boolean>(false);
+
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [activeTab, setActiveTab] = useState<string>("dashboard");
   const [activeTeacherContext, setActiveTeacherContext] = useState<string>("mapel");
@@ -377,6 +395,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => saveToLocal("blogTags", blogTags), [blogTags]);
   useEffect(() => saveToLocal("organizationStructure", organizationStructure), [organizationStructure]);
   useEffect(() => saveToLocal("contactMessages", contactMessages), [contactMessages]);
+
+  // Fetch dynamic public data from PostgreSQL backend on mount
+  const fetchPublicData = useCallback(async () => {
+    setIsStatsLoading(true);
+    try {
+      const [statsData, profileData, blogData, orgData] = await Promise.allSettled([
+        api.getPublicStats(),
+        api.getPublicSchoolProfile(),
+        api.getPublicBlog({ limit: 12 }),
+        api.getPublicOrganization(),
+      ]);
+
+      if (statsData.status === "fulfilled" && statsData.value) {
+        setPublicStats(statsData.value);
+      }
+      if (profileData.status === "fulfilled" && profileData.value) {
+        setSchoolProfile((prev) => ({ ...prev, ...profileData.value }));
+      }
+      if (blogData.status === "fulfilled" && blogData.value?.posts && blogData.value.posts.length > 0) {
+        setBlogPosts(blogData.value.posts);
+      }
+      if (orgData.status === "fulfilled" && orgData.value && orgData.value.length > 0) {
+        setOrganizationStructure(orgData.value);
+      }
+    } catch (err) {
+      console.warn("Public data sync error:", err);
+    } finally {
+      setIsStatsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPublicData();
+  }, [fetchPublicData]);
 
   // Handle browser back/forward buttons (popstate)
   useEffect(() => {
@@ -487,19 +539,76 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast("success", "Login Berhasil", `Selamat datang, ${defaultUser.name}!`);
   };
 
-  const loginWithCredentials = (usernameOrEmail: string, pass: string): boolean => {
-    const u = users.find(
-      (x) => x.username.toLowerCase() === usernameOrEmail.toLowerCase() || x.email.toLowerCase() === usernameOrEmail.toLowerCase()
-    );
-    if (u) {
-      setCurrentUser(u);
-      setActiveTab("dashboard");
-      addAuditLog("Login Pengguna", `Login sukses melalui form untuk akun: ${u.username}`);
-      showToast("success", "Login Berhasil", `Selamat datang kembali, ${u.name}`);
-      return true;
+  const loginWithCredentials = async (
+    usernameOrEmail: string,
+    pass: string,
+    role?: string
+  ): Promise<{ success: boolean; message: string; user?: User }> => {
+    if (!role) {
+      const msg = "Silakan pilih jenis pengguna terlebih dahulu.";
+      showToast("warning", "Pilih Jenis Pengguna", msg);
+      return { success: false, message: msg };
     }
-    showToast("error", "Login Gagal", "Username/Email atau Password tidak ditemukan.");
-    return false;
+
+    if (!usernameOrEmail || !pass) {
+      const msg = "Username atau email dan kata sandi wajib diisi.";
+      showToast("warning", "Input Tidak Lengkap", msg);
+      return { success: false, message: msg };
+    }
+
+    try {
+      const res = await api.login({
+        usernameOrEmail: usernameOrEmail.trim(),
+        password: pass,
+        role: role.trim(),
+      });
+
+      if (res.success && res.user) {
+        setCurrentUser(res.user);
+        setAppMode("dashboard");
+        setActiveTab("dashboard");
+        addAuditLog("Login Pengguna", `Login sukses sebagai ${role} untuk akun: ${res.user.username}`);
+        showToast("success", "Login Berhasil", `Selamat datang kembali, ${res.user.name}!`);
+
+        const rolePath =
+          res.user.role === "admin"
+            ? "/admin/dashboard"
+            : res.user.role === "guru"
+            ? "/teacher/dashboard"
+            : res.user.role === "siswa"
+            ? "/student/dashboard"
+            : "/parent/dashboard";
+
+        if (typeof window !== "undefined") {
+          window.history.pushState({}, "", rolePath);
+        }
+        return { success: true, message: res.message || "Login berhasil", user: res.user };
+      } else {
+        const errorMsg = res.message || "Username atau password yang Anda masukkan salah.";
+        showToast("error", "Login Gagal", errorMsg);
+        return { success: false, message: errorMsg };
+      }
+    } catch (err: any) {
+      // Offline fallback: check local user list
+      const u = users.find(
+        (x) =>
+          (x.username.toLowerCase() === usernameOrEmail.toLowerCase().trim() ||
+            x.email.toLowerCase() === usernameOrEmail.toLowerCase().trim()) &&
+          x.role.toLowerCase() === role.toLowerCase().replace("_", "")
+      );
+      if (u) {
+        setCurrentUser(u);
+        setAppMode("dashboard");
+        setActiveTab("dashboard");
+        addAuditLog("Login Pengguna", `Login offline untuk akun: ${u.username}`);
+        showToast("success", "Login Berhasil", `Selamat datang kembali, ${u.name}`);
+        return { success: true, message: "Login berhasil", user: u };
+      }
+
+      const errorMsg = err?.message || "Terjadi kesalahan pada server saat login.";
+      showToast("error", "Login Gagal", errorMsg);
+      return { success: false, message: errorMsg };
+    }
   };
 
   const logout = () => {
@@ -507,7 +616,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addAuditLog("Logout", `Pengguna ${currentUser.name} keluar dari sistem.`);
     }
     setCurrentUser(null);
+    setAppMode("public");
+    setPublicRoute("home");
     setActiveTab("dashboard");
+    if (typeof window !== "undefined") {
+      window.history.pushState({}, "", "/");
+    }
     showToast("info", "Keluar", "Anda telah keluar dari aplikasi.");
   };
 
@@ -1886,6 +2000,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setAppMode,
         navigateToPublic,
         navigateToDashboard,
+        publicStats,
+        isStatsLoading,
+        fetchPublicData,
         blogPosts,
         blogCategories,
         blogTags,

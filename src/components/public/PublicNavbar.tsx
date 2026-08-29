@@ -131,10 +131,10 @@ export const PublicNavbar: React.FC = () => {
               <button
                 id="btn-goto-login"
                 onClick={() => navigateToPublic("login")}
-                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-semibold text-sm rounded-xl shadow-md shadow-emerald-700/20 transition-all hover:shadow-lg active:scale-98"
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-sm rounded-xl shadow-md shadow-emerald-700/20 transition-all hover:shadow-lg active:scale-98 cursor-pointer"
               >
                 <LogIn className="w-4 h-4" />
-                <span>Masuk Portal sMTs</span>
+                <span>Login</span>
               </button>
             )}
           </div>
@@ -197,10 +197,10 @@ export const PublicNavbar: React.FC = () => {
                   setMobileMenuOpen(false);
                   navigateToPublic("login");
                 }}
-                className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl shadow"
+                className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl shadow cursor-pointer"
               >
                 <LogIn className="w-4 h-4" />
-                <span>Masuk Portal sMTs</span>
+                <span>Login</span>
               </button>
             )}
           </div>

@@ -20,6 +20,7 @@ import { systemRouter } from "./src/server/routes/system.routes";
 import { blogRouter } from "./src/server/routes/blog.routes";
 import { organizationRouter } from "./src/server/routes/organization.routes";
 import { contactRouter } from "./src/server/routes/contact.routes";
+import { publicRouter } from "./src/server/routes/public.routes";
 import { checkDatabaseConnection } from "./src/lib/prisma";
 
 dotenv.config();
@@ -33,6 +34,7 @@ app.use(express.json({ limit: "25mb" }));
 // ----------------------------------------------------
 // DATABASE BACKEND API ROUTES (PostgreSQL + Prisma)
 // ----------------------------------------------------
+app.use("/api/public", publicRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/duties", dutiesRouter);

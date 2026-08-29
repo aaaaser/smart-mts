@@ -71,9 +71,21 @@ const PublicLayout: React.FC = () => {
 };
 
 const DashboardLayout: React.FC = () => {
-  const { activeTab, currentUser } = useApp();
+  const { activeTab, currentUser, navigateToPublic, showToast } = useApp();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isAIDrawerOpen, setIsAIDrawerOpen] = useState(false);
+
+  // Session guard: Ensure visitors cannot access dashboard without logging in
+  React.useEffect(() => {
+    if (!currentUser) {
+      showToast("warning", "Akses Terbatas", "Silakan login terlebih dahulu untuk mengakses dashboard madrasah.");
+      navigateToPublic("login");
+    }
+  }, [currentUser, navigateToPublic, showToast]);
+
+  if (!currentUser) {
+    return null;
+  }
 
   const renderDashboardContent = () => {
     switch (activeTab) {

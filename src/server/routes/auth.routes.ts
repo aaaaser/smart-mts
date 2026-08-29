@@ -1,16 +1,62 @@
 import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
+import { Role } from "@prisma/client";
 import { prisma, checkDatabaseConnection } from "../../lib/prisma";
 
 export const authRouter = Router();
 
-// Login with username/email & password
+// Helper to normalize and map role strings to Prisma Role enum
+function mapRole(roleInput?: string): { roleEnum: Role; label: string } | null {
+  if (!roleInput) return null;
+  const normalized = roleInput.trim().toLowerCase();
+  if (normalized === "admin") {
+    return { roleEnum: Role.ADMIN, label: "Admin" };
+  }
+  if (normalized === "guru" || normalized === "teacher") {
+    return { roleEnum: Role.TEACHER, label: "Guru" };
+  }
+  if (normalized === "siswa" || normalized === "student") {
+    return { roleEnum: Role.STUDENT, label: "Siswa" };
+  }
+  if (
+    normalized === "orang_tua" ||
+    normalized === "orangtua" ||
+    normalized === "parent" ||
+    normalized === "wali" ||
+    normalized === "orang tua / wali"
+  ) {
+    return { roleEnum: Role.PARENT, label: "Orang Tua / Wali" };
+  }
+  return null;
+}
+
+// Login with username/email, password, & role verification
 authRouter.post("/login", async (req: Request, res: Response): Promise<void> => {
   try {
-    const { usernameOrEmail, password } = req.body;
+    const { usernameOrEmail, password, role } = req.body;
+
+    if (!role) {
+      res.status(400).json({
+        success: false,
+        message: "Silakan pilih jenis pengguna terlebih dahulu.",
+      });
+      return;
+    }
+
+    const mappedRole = mapRole(role);
+    if (!mappedRole) {
+      res.status(400).json({
+        success: false,
+        message: "Jenis pengguna yang dipilih tidak valid. Pilihan: Admin, Guru, Siswa, Orang Tua / Wali.",
+      });
+      return;
+    }
 
     if (!usernameOrEmail || !password) {
-      res.status(400).json({ success: false, message: "Username/email dan password wajib diisi." });
+      res.status(400).json({
+        success: false,
+        message: "Username atau email dan password wajib diisi.",
+      });
       return;
     }
 
@@ -18,17 +64,18 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
     if (!dbStatus.connected) {
       res.status(503).json({
         success: false,
-        message: "Database PostgreSQL belum terhubung. Pastikan service PostgreSQL dan migration telah dijalankan.",
+        message: "Database PostgreSQL belum terhubung. Pastikan service PostgreSQL telah aktif.",
         dbError: dbStatus.error,
       });
       return;
     }
 
+    // Case-insensitive lookup
     const user = await prisma.user.findFirst({
       where: {
         OR: [
-          { username: usernameOrEmail.toLowerCase() },
-          { email: usernameOrEmail.toLowerCase() },
+          { username: { equals: usernameOrEmail.trim(), mode: "insensitive" } },
+          { email: { equals: usernameOrEmail.trim(), mode: "insensitive" } },
         ],
       },
       include: {
@@ -47,19 +94,46 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
     });
 
     if (!user) {
-      res.status(401).json({ success: false, message: "Akun tidak ditemukan. Periksa username/email Anda." });
+      res.status(401).json({
+        success: false,
+        message: "Username atau password yang Anda masukkan salah.",
+      });
       return;
     }
 
     if (!user.isActive) {
-      res.status(403).json({ success: false, message: "Akun ini dinonaktifkan. Hubungi Administrator madrasah." });
+      res.status(403).json({
+        success: false,
+        message: "Akun Anda dinonaktifkan. Silakan hubungi administrator madrasah.",
+      });
       return;
     }
 
-    // Verify password hash
-    const isMatch = await bcrypt.compare(password, user.passwordHash);
+    // Verify password hash (or direct string fallback if unhashed)
+    let isMatch = false;
+    try {
+      isMatch = await bcrypt.compare(password, user.passwordHash);
+    } catch {
+      isMatch = false;
+    }
+    if (!isMatch && user.passwordHash === password) {
+      isMatch = true;
+    }
+
     if (!isMatch) {
-      res.status(401).json({ success: false, message: "Password salah. Silakan coba kembali." });
+      res.status(401).json({
+        success: false,
+        message: "Username atau password yang Anda masukkan salah.",
+      });
+      return;
+    }
+
+    // Verify Role matches the selected role
+    if (user.role !== mappedRole.roleEnum) {
+      res.status(403).json({
+        success: false,
+        message: `Akun ini tidak terdaftar sebagai ${mappedRole.label}. Silakan pilih jenis pengguna yang sesuai.`,
+      });
       return;
     }
 
@@ -70,23 +144,27 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
     });
 
     // Create Audit Log
-    await prisma.auditLog.create({
-      data: {
-        userId: user.id,
-        userName: user.teacher?.fullName || user.student?.fullName || user.username,
-        userRole: user.role,
-        action: "LOGIN",
-        details: `User ${user.username} berhasil login ke sistem smart MTs`,
-        ipOrDevice: req.ip || "127.0.0.1",
-      },
-    });
+    try {
+      await prisma.auditLog.create({
+        data: {
+          userId: user.id,
+          userName: user.teacher?.fullName || user.student?.fullName || user.parent?.fullName || user.username,
+          userRole: user.role,
+          action: "LOGIN",
+          details: `User ${user.username} berhasil login sebagai ${mappedRole.label} ke sistem smart MTs`,
+          ipOrDevice: req.ip || "127.0.0.1",
+        },
+      });
+    } catch (auditErr) {
+      console.warn("Audit log creation skipped:", auditErr);
+    }
 
     // Transform user for frontend consumption
     const userPayload = {
       id: user.id,
       username: user.username,
       email: user.email,
-      role: user.role.toLowerCase(),
+      role: user.role === Role.ADMIN ? "admin" : user.role === Role.TEACHER ? "guru" : user.role === Role.STUDENT ? "siswa" : "orangtua",
       name: user.teacher?.fullName || user.student?.fullName || user.parent?.fullName || user.username,
       nip: user.teacher?.nip || undefined,
       nis: user.student?.nis || undefined,
@@ -97,7 +175,7 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
       qrIsActive: user.qrCode?.isActive ?? true,
       teacherId: user.teacher?.id,
       studentId: user.student?.id,
-      phone: user.teacher?.phone || undefined,
+      phone: user.teacher?.phone || user.parent?.phone || undefined,
       address: user.teacher?.address || user.student?.address || undefined,
     };
 
@@ -108,7 +186,7 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
     });
   } catch (error: any) {
     console.error("Login error:", error);
-    res.status(500).json({ success: false, message: error?.message || "Internal server error" });
+    res.status(500).json({ success: false, message: "Terjadi kesalahan pada server saat proses login." });
   }
 });
 
