@@ -1,0 +1,1159 @@
+// Prisma Schema for smart MTs (sMTs)
+// Database: PostgreSQL (smts_db)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --------------------------------------------------------
+// ENUMS
+// --------------------------------------------------------
+
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+  PARENT
+}
+
+enum Gender {
+  L
+  P
+}
+
+enum EmploymentStatus {
+  PNS
+  PPPK
+  GTY
+  GTT
+  HONORER
+}
+
+enum StudentStatus {
+  ACTIVE
+  GRADUATED
+  TRANSFERRED
+  DROPPED_OUT
+  INACTIVE
+}
+
+enum MembershipStatus {
+  ACTIVE
+  PROMOTED
+  RETAINED
+  TRANSFERRED
+  INACTIVE
+}
+
+enum SemesterType {
+  GANJIL
+  GENAP
+}
+
+enum CurriculumType {
+  MERDEKA
+  K13
+}
+
+enum AssignmentTypeCategory {
+  HOMEROOM_TEACHER
+  DUTY_TEACHER
+  EXTRACURRICULAR_COACH
+  COORDINATOR
+  OTHER
+}
+
+enum AttendanceSessionType {
+  DAILY
+  CLASS
+  TEACHER
+  ACTIVITY
+  OTHER
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  EXCUSED
+  SICK
+  ABSENT
+}
+
+enum AttendanceMethod {
+  QR_SCAN
+  MANUAL
+  LOCATION_SCAN
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  COMPLEX_MCQ
+  TRUE_FALSE
+  MATCHING
+  SHORT_ANSWER
+  ESSAY
+}
+
+enum DifficultyLevel {
+  MUDAH
+  SEDANG
+  SULIT
+  HOTS
+}
+
+enum CognitiveLevel {
+  C1
+  C2
+  C3
+  C4
+  C5
+  C6
+}
+
+enum ExamCategory {
+  UH
+  PTS
+  PAS
+  PAT
+  TRYOUT
+  KUIS
+}
+
+enum ExamStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  GRADED
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum SubmissionStatus {
+  SUBMITTED
+  LATE
+  GRADED
+}
+
+enum ReportCardStatus {
+  DRAFT
+  FINALIZED
+}
+
+// --------------------------------------------------------
+// USER & IDENTITY
+// --------------------------------------------------------
+
+model User {
+  id           String    @id @default(uuid())
+  username     String    @unique
+  email        String    @unique
+  passwordHash String
+  role         Role      @default(STUDENT)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // 1-to-1 Profiles
+  teacher      Teacher?
+  student      Student?
+  parent       Parent?
+  qrCode       UserQrCode?
+
+  // Relations
+  createdAttendanceSessions AttendanceSession[] @relation("SessionCreator")
+  attendanceRecords         AttendanceRecord[]  @relation("UserAttendance")
+  scannedAttendanceRecords  AttendanceRecord[]  @relation("AttendanceScanner")
+  notifications             Notification[]
+  auditLogs                 AuditLog[]
+
+  @@index([username])
+  @@index([email])
+  @@index([role])
+}
+
+model UserQrCode {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  qrToken   String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([qrToken])
+}
+
+// --------------------------------------------------------
+// TEACHER, STUDENT, PARENT
+// --------------------------------------------------------
+
+model Teacher {
+  id               String           @id @default(uuid())
+  userId           String           @unique
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nip              String?          @unique
+  nuptk            String?          @unique
+  nik              String?          @unique
+  fullName         String
+  email            String?
+  phone            String?
+  gender           Gender           @default(L)
+  birthPlace       String?
+  birthDate        DateTime?
+  address          String?
+  photo            String?
+  employmentStatus EmploymentStatus @default(GTY)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  // Relations
+  teacherSubjects    TeacherSubject[]
+  schedules          Schedule[]
+  assignments        Assignment[]
+  teacherAssignments TeacherAssignment[]
+  createdExams       Exam[]
+  extracurriculars   Extracurricular[]   @relation("LeadTeacher")
+  attendanceSessions AttendanceSession[]
+
+  @@index([fullName])
+  @@index([nip])
+}
+
+model Student {
+  id          String        @id @default(uuid())
+  userId      String        @unique
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nis         String        @unique
+  nisn        String?       @unique
+  fullName    String
+  gender      Gender        @default(L)
+  birthPlace  String?
+  birthDate   DateTime?
+  address     String?
+  photo       String?
+  entryYear   Int           @default(2025)
+  status      StudentStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  classMemberships       StudentClassMembership[]
+  parentStudents         ParentStudent[]
+  examAttempts           ExamAttempt[]
+  assignmentSubmissions  AssignmentSubmission[]
+  grades                 Grade[]
+  dailyGrades            DailyGrade[]
+  midtermGrades          MidtermGrade[]
+  finalGrades            FinalGrade[]
+  remedials              Remedial[]
+  reportCards            ReportCard[]
+  extracurricularMembers ExtracurricularMember[]
+
+  @@index([nis])
+  @@index([nisn])
+  @@index([fullName])
+}
+
+model Parent {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName    String
+  phone       String?
+  address     String?
+  occupation  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parentStudents ParentStudent[]
+}
+
+model ParentStudent {
+  id           String   @id @default(uuid())
+  parentId     String
+  parent       Parent   @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  studentId    String
+  student      Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  relationship String   @default("Orang Tua") // Ayah, Ibu, Wali
+  createdAt    DateTime @default(now())
+
+  @@unique([parentId, studentId])
+}
+
+// --------------------------------------------------------
+// ACADEMIC STRUCTURE
+// --------------------------------------------------------
+
+model AcademicYear {
+  id        String   @id @default(uuid())
+  name      String   @unique // e.g. "2025/2026", "2026/2027"
+  startDate DateTime
+  endDate   DateTime
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  semesters              Semester[]
+  classes                Class[]
+  studentClassMemberships StudentClassMembership[]
+  classSubjects          ClassSubject[]
+  teacherSubjects        TeacherSubject[]
+  teacherAssignments     TeacherAssignment[]
+  attendanceSessions     AttendanceSession[]
+  schedules              Schedule[]
+  grades                 Grade[]
+  reportCards            ReportCard[]
+  extracurriculars       Extracurricular[]
+}
+
+model Semester {
+  id             String       @id @default(uuid())
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  name           SemesterType @default(GANJIL)
+  startDate      DateTime
+  endDate        DateTime
+  isActive       Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  classSubjects      ClassSubject[]
+  teacherSubjects    TeacherSubject[]
+  teacherAssignments TeacherAssignment[]
+  attendanceSessions AttendanceSession[]
+  schedules          Schedule[]
+  grades             Grade[]
+  reportCards        ReportCard[]
+  exams              Exam[]
+
+  @@unique([academicYearId, name])
+}
+
+model Class {
+  id             String       @id @default(uuid())
+  name           String       // e.g. "VII-A", "VIII-B", "IX-A"
+  gradeLevel     Int          // 7, 8, 9
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  capacity       Int          @default(32)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  studentMemberships StudentClassMembership[]
+  classSubjects      ClassSubject[]
+  schedules          Schedule[]
+  teacherAssignments TeacherAssignment[]
+  attendanceSessions AttendanceSession[]
+  assignments        Assignment[]
+  grades             Grade[]
+  reportCards        ReportCard[]
+
+  @@unique([name, academicYearId])
+  @@index([gradeLevel])
+}
+
+model StudentClassMembership {
+  id             String           @id @default(uuid())
+  studentId      String
+  student        Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  classId        String
+  class          Class            @relation(fields: [classId], references: [id], onDelete: Cascade)
+  academicYearId String
+  academicYear   AcademicYear     @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  startDate      DateTime         @default(now())
+  endDate        DateTime?
+  status         MembershipStatus @default(ACTIVE)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([studentId, classId, academicYearId])
+  @@index([studentId])
+  @@index([classId])
+  @@index([academicYearId])
+}
+
+// --------------------------------------------------------
+// SUBJECTS & ASSIGNMENTS
+// --------------------------------------------------------
+
+model Subject {
+  id          String   @id @default(uuid())
+  code        String   @unique // e.g. "PAI-01", "MTK-01", "BIND-01"
+  name        String
+  description String?
+  category    String   @default("Wajib") // Wajib, Peminatan, Mulok
+  kkm         Float    @default(75.0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  teacherSubjects    TeacherSubject[]
+  classSubjects      ClassSubject[]
+  schedules          Schedule[]
+  curriculums        Curriculum[]
+  learningOutcomes   LearningOutcome[]
+  competencies       Competency[]
+  materials          Material[]
+  questionBanks      QuestionBank[]
+  questions          Question[]
+  exams              Exam[]
+  assignments        Assignment[]
+  grades             Grade[]
+  reportCardSubjects ReportCardSubject[]
+  attendanceSessions AttendanceSession[]
+}
+
+model TeacherSubject {
+  id             String       @id @default(uuid())
+  teacherId      String
+  teacher        Teacher      @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subjectId      String
+  subject        Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  semesterId     String?
+  semester       Semester?    @relation(fields: [semesterId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+
+  @@unique([teacherId, subjectId, academicYearId])
+  @@index([teacherId])
+  @@index([subjectId])
+}
+
+model ClassSubject {
+  id             String       @id @default(uuid())
+  classId        String
+  class          Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subjectId      String
+  subject        Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  semesterId     String?
+  semester       Semester?    @relation(fields: [semesterId], references: [id], onDelete: SetNull)
+  hoursPerWeek   Int          @default(2)
+  createdAt      DateTime     @default(now())
+
+  @@unique([classId, subjectId, academicYearId])
+  @@index([classId])
+  @@index([subjectId])
+}
+
+model Schedule {
+  id             String       @id @default(uuid())
+  dayOfWeek      String       // "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"
+  startTime      String       // "07:30"
+  endTime        String       // "09:00"
+  classId        String
+  class          Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subjectId      String
+  subject        Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacherId      String
+  teacher        Teacher      @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  room           String       @default("Ruang Kelas")
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  semesterId     String?
+  semester       Semester?    @relation(fields: [semesterId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([classId])
+  @@index([teacherId])
+  @@index([dayOfWeek])
+}
+
+// --------------------------------------------------------
+// MULTIPLE TEACHER ASSIGNMENTS (TUGAS TAMBAHAN GURU)
+// --------------------------------------------------------
+
+model TeacherAssignmentType {
+  id          String                 @id @default(uuid())
+  code        AssignmentTypeCategory @unique
+  name        String                 // "Wali Kelas", "Guru Piket", "Pembina Ekstrakurikuler", "Koordinator"
+  description String?
+  createdAt   DateTime               @default(now())
+
+  assignments TeacherAssignment[]
+}
+
+model TeacherAssignment {
+  id                String                 @id @default(uuid())
+  teacherId         String
+  teacher           Teacher                @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  assignmentTypeId  String
+  assignmentType    TeacherAssignmentType  @relation(fields: [assignmentTypeId], references: [id], onDelete: Cascade)
+  name              String                 // e.g. "Wali Kelas VII-A", "Guru Piket Senin", "Pembina Pramuka"
+  classId           String?
+  class             Class?                 @relation(fields: [classId], references: [id], onDelete: SetNull)
+  extracurricularId String?
+  extracurricular   Extracurricular?       @relation(fields: [extracurricularId], references: [id], onDelete: SetNull)
+  dayOfWeek         String?                // For Guru Piket (e.g. "Senin")
+  startTime         String?                // e.g. "06:30"
+  endTime           String?                // e.g. "14:00"
+  location          String?                // e.g. "Pos Piket Gerbang Utama"
+  academicYearId    String
+  academicYear      AcademicYear           @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  semesterId        String?
+  semester          Semester?              @relation(fields: [semesterId], references: [id], onDelete: SetNull)
+  startDate         DateTime?
+  endDate           DateTime?
+  status            String                 @default("aktif") // aktif, tidak_aktif, selesai
+  isActive          Boolean                @default(true)
+  notes             String?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@index([teacherId])
+  @@index([academicYearId])
+  @@index([semesterId])
+}
+
+// --------------------------------------------------------
+// EXTRACURRICULAR (EKSTRAKURIKULER)
+// --------------------------------------------------------
+
+model Extracurricular {
+  id             String       @id @default(uuid())
+  name           String       // "Pramuka", "PMR", "Tahfidz", "Robotik", "Paskibra"
+  category       String       @default("Kepemimpinan") // Keagamaan, Kepemimpinan, Sains, Seni, Olahraga
+  leadTeacherId  String?
+  leadTeacher    Teacher?     @relation("LeadTeacher", fields: [leadTeacherId], references: [id], onDelete: SetNull)
+  scheduleDay    String       @default("Sabtu")
+  scheduleTime   String       @default("14:30 - 16:30")
+  location       String       @default("Lapangan Utama")
+  description    String?
+  academicYearId String?
+  academicYear   AcademicYear? @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  members            ExtracurricularMember[]
+  teacherAssignments TeacherAssignment[]
+}
+
+model ExtracurricularMember {
+  id                String          @id @default(uuid())
+  extracurricularId String
+  extracurricular   Extracurricular @relation(fields: [extracurricularId], references: [id], onDelete: Cascade)
+  studentId         String
+  student           Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  joinedAt          DateTime        @default(now())
+  role              String          @default("Anggota") // Anggota, Ketua, Sekretaris, Bendahara
+
+  @@unique([extracurricularId, studentId])
+  @@index([studentId])
+  @@index([extracurricularId])
+}
+
+// --------------------------------------------------------
+// ATTENDANCE (ABSENSI TERPADU SATU SCANNER)
+// --------------------------------------------------------
+
+model AttendanceSession {
+  id             String                @id @default(uuid())
+  title          String
+  sessionType    AttendanceSessionType @default(DAILY)
+  classId        String?
+  class          Class?                @relation(fields: [classId], references: [id], onDelete: SetNull)
+  subjectId      String?
+  subject        Subject?              @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  teacherId      String?
+  teacher        Teacher?              @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  academicYearId String?
+  academicYear   AcademicYear?         @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
+  semesterId     String?
+  semester       Semester?             @relation(fields: [semesterId], references: [id], onDelete: SetNull)
+  date           DateTime              @default(now())
+  startTime      String                @default("07:00")
+  endTime        String                @default("15:00")
+  lateAfter      String?               @default("07:15")
+  createdBy      String?
+  creator        User?                 @relation("SessionCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  token          String?
+  status         String                @default("aktif") // aktif, ditutup
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  records AttendanceRecord[]
+
+  @@index([date])
+  @@index([sessionType])
+}
+
+model AttendanceRecord {
+  id         String            @id @default(uuid())
+  sessionId  String?
+  session    AttendanceSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  userId     String
+  user       User              @relation("UserAttendance", fields: [userId], references: [id], onDelete: Cascade)
+  scannedBy  String?
+  scanner    User?             @relation("AttendanceScanner", fields: [scannedBy], references: [id], onDelete: SetNull)
+  scannedAt  DateTime          @default(now())
+  status     AttendanceStatus  @default(PRESENT)
+  method     AttendanceMethod  @default(QR_SCAN)
+  deviceInfo String?
+  latitude   Float?
+  longitude  Float?
+  notes      String?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  @@unique([sessionId, userId])
+  @@index([sessionId])
+  @@index([userId])
+  @@index([scannedAt])
+  @@index([status])
+}
+
+// --------------------------------------------------------
+// CURRICULUM (KURIKULUM MERDEKA & K13)
+// --------------------------------------------------------
+
+model Curriculum {
+  id             String         @id @default(uuid())
+  subjectId      String
+  subject        Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  curriculumType CurriculumType @default(MERDEKA)
+  name           String         // "Fase D - Kelas 7-9"
+  gradeLevel     Int            @default(7)
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  learningOutcomes LearningOutcome[]
+  competencies     Competency[]
+  materials        Material[]
+  assignments      Assignment[]
+}
+
+// CP (Capaian Pembelajaran) - Kurikulum Merdeka
+model LearningOutcome {
+  id             String      @id @default(uuid())
+  curriculumId   String?
+  curriculum     Curriculum? @relation(fields: [curriculumId], references: [id], onDelete: SetNull)
+  subjectId      String
+  subject        Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  code           String      // "CP-IPA-01"
+  title          String
+  phase          String?     // "Fase D"
+  gradeLevel     Int?        @default(7)
+  topic          String?
+  element        String?
+  description    String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  learningObjectives LearningObjective[]
+  questions          Question[]
+  assignments        Assignment[]
+
+  @@index([subjectId])
+}
+
+// KD (Kompetensi Dasar) - K13
+model Competency {
+  id             String      @id @default(uuid())
+  curriculumId   String?
+  curriculum     Curriculum? @relation(fields: [curriculumId], references: [id], onDelete: SetNull)
+  subjectId      String
+  subject        Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  code           String      // "KD 3.1"
+  title          String
+  coreCompetency String?     // "KI 3 (Pengetahuan)"
+  gradeLevel     Int?        @default(7)
+  description    String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  questions   Question[]
+  assignments Assignment[]
+
+  @@index([subjectId])
+}
+
+// TP (Tujuan Pembelajaran)
+model LearningObjective {
+  id                String           @id @default(uuid())
+  learningOutcomeId String?
+  learningOutcome   LearningOutcome? @relation(fields: [learningOutcomeId], references: [id], onDelete: Cascade)
+  code              String           // "TP 7.1"
+  statement         String
+  indicators        String?          // JSON or newline separated text
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  materials   Material[]
+  questions   Question[]
+  assignments Assignment[]
+}
+
+model Material {
+  id                  String             @id @default(uuid())
+  curriculumId        String?
+  curriculum          Curriculum?        @relation(fields: [curriculumId], references: [id], onDelete: SetNull)
+  subjectId           String
+  subject             Subject            @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  learningObjectiveId String?
+  learningObjective   LearningObjective? @relation(fields: [learningObjectiveId], references: [id], onDelete: SetNull)
+  title               String
+  summary             String?
+  content             String?
+  gradeLevel          Int                @default(7)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  questions Question[]
+}
+
+// --------------------------------------------------------
+// QUESTION BANK (BANK SOAL)
+// --------------------------------------------------------
+
+model QuestionBank {
+  id          String     @id @default(uuid())
+  subjectId   String
+  subject     Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  questions Question[]
+}
+
+model Question {
+  id                  String             @id @default(uuid())
+  questionBankId      String?
+  questionBank        QuestionBank?      @relation(fields: [questionBankId], references: [id], onDelete: SetNull)
+  subjectId           String
+  subject             Subject            @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  learningOutcomeId   String?
+  learningOutcome     LearningOutcome?   @relation(fields: [learningOutcomeId], references: [id], onDelete: SetNull)
+  competencyId        String?
+  competency          Competency?        @relation(fields: [competencyId], references: [id], onDelete: SetNull)
+  learningObjectiveId String?
+  learningObjective   LearningObjective? @relation(fields: [learningObjectiveId], references: [id], onDelete: SetNull)
+  materialId          String?
+  material            Material?          @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  type                QuestionType       @default(MULTIPLE_CHOICE)
+  difficulty          DifficultyLevel    @default(SEDANG)
+  cognitiveLevel      CognitiveLevel     @default(C3)
+  questionText        String
+  correctAnswer       String             // JSON string for complex answers, or single string
+  explanation         String?
+  points              Float              @default(10.0)
+  indicator           String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  options       QuestionOption[]
+  examQuestions ExamQuestion[]
+
+  @@index([subjectId])
+  @@index([type])
+  @@index([difficulty])
+}
+
+model QuestionOption {
+  id         String   @id @default(uuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  optionKey  String   // "A", "B", "C", "D"
+  optionText String
+  isCorrect  Boolean  @default(false)
+
+  @@index([questionId])
+}
+
+// --------------------------------------------------------
+// EXAMS (UJIAN / CBT)
+// --------------------------------------------------------
+
+model Exam {
+  id                    String       @id @default(uuid())
+  title                 String
+  category              ExamCategory @default(UH)
+  subjectId             String
+  subject               Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacherId             String
+  teacher               Teacher      @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  semesterId            String?
+  semester              Semester?    @relation(fields: [semesterId], references: [id], onDelete: SetNull)
+  classIds              String       // JSON string of class IDs e.g. ["cls-1", "cls-2"]
+  date                  DateTime     @default(now())
+  startTime             String       @default("08:00")
+  endTime               String       @default("10:00")
+  durationMinutes       Int          @default(90)
+  passingGrade          Float        @default(75.0)
+  randomizeQuestions    Boolean      @default(true)
+  randomizeOptions      Boolean      @default(true)
+  maxAttempts           Int          @default(1)
+  showResultAfterSubmit Boolean      @default(true)
+  showExplanation       Boolean      @default(true)
+  status                ExamStatus   @default(ACTIVE)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  questions ExamQuestion[]
+  attempts  ExamAttempt[]
+
+  @@index([subjectId])
+  @@index([teacherId])
+  @@index([status])
+}
+
+model ExamQuestion {
+  id         String   @id @default(uuid())
+  examId     String
+  exam       Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  orderIndex Int      @default(0)
+
+  examAnswers ExamAnswer[]
+
+  @@unique([examId, questionId])
+  @@index([examId])
+  @@index([questionId])
+}
+
+model ExamAttempt {
+  id          String        @id @default(uuid())
+  examId      String
+  exam        Exam          @relation(fields: [examId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  startedAt   DateTime      @default(now())
+  submittedAt DateTime?
+  score       Float         @default(0.0)
+  maxScore    Float         @default(100.0)
+  percentage  Float         @default(0.0)
+  passed      Boolean       @default(false)
+  status      AttemptStatus @default(IN_PROGRESS)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  answers ExamAnswer[]
+
+  @@index([examId])
+  @@index([studentId])
+}
+
+model ExamAnswer {
+  id             String       @id @default(uuid())
+  attemptId      String
+  attempt        ExamAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  examQuestionId String
+  examQuestion   ExamQuestion @relation(fields: [examQuestionId], references: [id], onDelete: Cascade)
+  studentAnswer  String?      // JSON or string
+  isCorrect      Boolean      @default(false)
+  scoreEarned    Float        @default(0.0)
+
+  @@unique([attemptId, examQuestionId])
+  @@index([attemptId])
+}
+
+// --------------------------------------------------------
+// ASSIGNMENT (TUGAS SISWA)
+// --------------------------------------------------------
+
+model Assignment {
+  id                  String             @id @default(uuid())
+  teacherId           String
+  teacher             Teacher            @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subjectId           String
+  subject             Subject            @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  classId             String
+  class               Class              @relation(fields: [classId], references: [id], onDelete: Cascade)
+  curriculumId        String?
+  curriculum          Curriculum?        @relation(fields: [curriculumId], references: [id], onDelete: SetNull)
+  learningOutcomeId   String?
+  learningOutcome     LearningOutcome?   @relation(fields: [learningOutcomeId], references: [id], onDelete: SetNull)
+  competencyId        String?
+  competency          Competency?        @relation(fields: [competencyId], references: [id], onDelete: SetNull)
+  learningObjectiveId String?
+  learningObjective   LearningObjective? @relation(fields: [learningObjectiveId], references: [id], onDelete: SetNull)
+  title               String
+  description         String
+  instructions        String?
+  deadline            DateTime
+  maxScore            Float              @default(100.0)
+  attachment          String?
+  status              AssignmentStatus   @default(ACTIVE)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  submissions AssignmentSubmission[]
+
+  @@index([classId])
+  @@index([teacherId])
+  @@index([subjectId])
+}
+
+model AssignmentSubmission {
+  id           String           @id @default(uuid())
+  assignmentId String
+  assignment   Assignment       @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  studentId    String
+  student      Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  submittedAt  DateTime         @default(now())
+  file         String?
+  answerText   String?
+  score        Float?
+  feedback     String?
+  status       SubmissionStatus @default(SUBMITTED)
+  gradedBy     String?
+  gradedAt     DateTime?
+
+  @@unique([assignmentId, studentId])
+  @@index([assignmentId])
+  @@index([studentId])
+}
+
+// --------------------------------------------------------
+// ASSESSMENT, GRADES & WEIGHTS (PENILAIAN & NILAI)
+// --------------------------------------------------------
+
+model AssessmentCategory {
+  id          String   @id @default(uuid())
+  code        String   @unique // "DAILY", "ASSIGNMENT", "PRACTICAL", "MIDTERM", "FINAL"
+  name        String   // "Ulangan Harian", "Tugas", "Praktik", "PTS", "PAS"
+  description String?
+  createdAt   DateTime @default(now())
+}
+
+model GradeWeight {
+  id             String   @id @default(uuid())
+  academicYearId String?
+  dailyWeight    Float    @default(40.0) // 40%
+  midtermWeight  Float    @default(25.0) // 25%
+  finalWeight    Float    @default(35.0) // 35%
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
+}
+
+model Grade {
+  id                     String       @id @default(uuid())
+  studentId              String
+  student                Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subjectId              String
+  subject                Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  classId                String
+  class                  Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  academicYearId         String
+  academicYear           AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  semesterId             String?
+  semester               Semester?    @relation(fields: [semesterId], references: [id], onDelete: SetNull)
+  dailyScores            String       @default("[]") // JSON array of numbers e.g. [80, 85]
+  assignmentScores       String       @default("[]") // JSON array e.g. [88, 90]
+  practicalScores        String       @default("[]") // JSON array e.g. [85]
+  midtermScore           Float        @default(0.0)
+  finalScore             Float        @default(0.0)
+  finalCalculatedGrade   Float        @default(0.0)
+  predicate              String       @default("B") // A, B, C, D
+  competencyDescription  String?
+  status                 String       @default("tuntas") // tuntas, belum_tuntas
+  isRemedial             Boolean      @default(false)
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  dailyGrades   DailyGrade[]
+  midtermGrades MidtermGrade[]
+  finalGrades   FinalGrade[]
+  remedials     Remedial[]
+
+  @@unique([studentId, subjectId, classId, academicYearId])
+  @@index([studentId])
+  @@index([subjectId])
+  @@index([classId])
+}
+
+model DailyGrade {
+  id        String   @id @default(uuid())
+  gradeId   String
+  grade     Grade    @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  title     String   // "UH 1", "Kuis 1"
+  score     Float
+  date      DateTime @default(now())
+
+  @@index([studentId])
+}
+
+model MidtermGrade {
+  id        String   @id @default(uuid())
+  gradeId   String
+  grade     Grade    @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  score     Float
+  date      DateTime @default(now())
+
+  @@index([studentId])
+}
+
+model FinalGrade {
+  id        String   @id @default(uuid())
+  gradeId   String
+  grade     Grade    @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  score     Float
+  date      DateTime @default(now())
+
+  @@index([studentId])
+}
+
+model Remedial {
+  id            String    @id @default(uuid())
+  gradeId       String
+  grade         Grade     @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+  studentId     String
+  student       Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  initialScore  Float
+  remedialScore Float
+  remedialDate  DateTime  @default(now())
+  notes         String?
+  isPassed      Boolean   @default(true)
+
+  @@index([studentId])
+}
+
+// --------------------------------------------------------
+// REPORT CARD (E-RAPOR DIGITAL)
+// --------------------------------------------------------
+
+model ReportCard {
+  id                String           @id @default(uuid())
+  studentId         String
+  student           Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  classId           String
+  class             Class            @relation(fields: [classId], references: [id], onDelete: Cascade)
+  academicYearId    String
+  academicYear      AcademicYear     @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  semesterId        String?
+  semester          Semester?        @relation(fields: [semesterId], references: [id], onDelete: SetNull)
+  issueDate         DateTime         @default(now())
+  issuePlace        String           @default("Jakarta")
+  attendanceHadir   Int              @default(0)
+  attendanceSakit   Int              @default(0)
+  attendanceIzin    Int              @default(0)
+  attendanceAlpa    Int              @default(0)
+  extracurriculars  String?          // JSON e.g. [{"name": "Pramuka", "predicate": "A", "description": "..."}]
+  achievements      String?          // JSON e.g. [{"title": "Juara 1 MTQ", "level": "Kabupaten"}]
+  physicalData      String?          // JSON e.g. {"heightCm": 160, "weightKg": 50, ...}
+  homeroomNotes     String?
+  status            ReportCardStatus @default(DRAFT)
+  finalizedAt       DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  reportCardSubjects ReportCardSubject[]
+
+  @@unique([studentId, classId, academicYearId])
+  @@index([studentId])
+  @@index([classId])
+}
+
+model ReportCardSubject {
+  id           String     @id @default(uuid())
+  reportCardId String
+  reportCard   ReportCard @relation(fields: [reportCardId], references: [id], onDelete: Cascade)
+  subjectId    String
+  subject      Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  finalScore   Float
+  predicate    String     @default("B") // A, B, C, D
+  description  String?
+
+  @@unique([reportCardId, subjectId])
+  @@index([reportCardId])
+}
+
+// --------------------------------------------------------
+// NOTIFICATION, ANNOUNCEMENT & AUDIT LOG
+// --------------------------------------------------------
+
+model Announcement {
+  id        String   @id @default(uuid())
+  title     String
+  content   String
+  target    String   @default("ALL") // ALL, TEACHER, STUDENT, PARENT
+  author    String   @default("Admin Madrasah")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   @default("info") // info, warning, success, exam, assignment, attendance
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userName   String
+  userRole   String
+  action     String   // "LOGIN", "CREATE_TEACHER", "CREATE_STUDENT", "SCAN_ATTENDANCE", "SUBMIT_EXAM", etc.
+  details    String   // Description or JSON
+  ipOrDevice String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+// --------------------------------------------------------
+// SCHOOL SETTINGS
+// --------------------------------------------------------
+
+model SchoolSetting {
+  id                  String   @id @default(uuid())
+  name                String   @default("MTs Negeri 1 Jakarta")
+  npsn                String   @default("20108921")
+  nss                 String?  @default("121131710001")
+  accreditation       String   @default("A (Unggul)")
+  address             String   @default("Jl. Madrasah No. 10, Jakarta Selatan")
+  phone               String   @default("(021) 7890123")
+  email               String   @default("info@mtsn1jakarta.sch.id")
+  website             String   @default("https://mtsn1jakarta.sch.id")
+  logoUrl             String?
+  principalName       String   @default("Drs. H. Ahmad Dahlan, M.Pd.I")
+  principalNip        String   @default("197505122000031002")
+  activeAcademicYear  String   @default("2025/2026")
+  activeSemester      String   @default("Ganjil")
+  activeCurriculum    String   @default("merdeka")
+  passingGradeDefault Float    @default(75.0)
+  schoolStartTime     String   @default("07:00")
+  schoolLateLimit     String   @default("07:15")
+  schoolEndTime       String   @default("15:00")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}

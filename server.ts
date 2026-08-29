@@ -1,15 +1,47 @@
 import express from "express";
 import path from "path";
+import cors from "cors";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+
+import { authRouter } from "./src/server/routes/auth.routes";
+import { usersRouter } from "./src/server/routes/users.routes";
+import { dutiesRouter } from "./src/server/routes/duties.routes";
+import { attendanceRouter } from "./src/server/routes/attendance.routes";
+import { masterRouter } from "./src/server/routes/master.routes";
+import { curriculumRouter } from "./src/server/routes/curriculum.routes";
+import { questionsRouter } from "./src/server/routes/questions.routes";
+import { examsRouter } from "./src/server/routes/exams.routes";
+import { assignmentsRouter } from "./src/server/routes/assignments.routes";
+import { gradesRouter } from "./src/server/routes/grades.routes";
+import { raporRouter } from "./src/server/routes/rapor.routes";
+import { systemRouter } from "./src/server/routes/system.routes";
+import { checkDatabaseConnection } from "./src/lib/prisma";
 
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
 
-app.use(express.json({ limit: "20mb" }));
+app.use(cors());
+app.use(express.json({ limit: "25mb" }));
+
+// ----------------------------------------------------
+// DATABASE BACKEND API ROUTES (PostgreSQL + Prisma)
+// ----------------------------------------------------
+app.use("/api/auth", authRouter);
+app.use("/api/users", usersRouter);
+app.use("/api/duties", dutiesRouter);
+app.use("/api/attendance", attendanceRouter);
+app.use("/api/master", masterRouter);
+app.use("/api/curriculum", curriculumRouter);
+app.use("/api/questions", questionsRouter);
+app.use("/api/exams", examsRouter);
+app.use("/api/assignments", assignmentsRouter);
+app.use("/api/grades", gradesRouter);
+app.use("/api/rapor", raporRouter);
+app.use("/api/system", systemRouter);
 
 // Lazy initialize GenAI client
 function getGenAI() {
@@ -26,6 +58,10 @@ function getGenAI() {
     },
   });
 }
+
+// ----------------------------------------------------
+// AI SERVICES (GEMINI API)
+// ----------------------------------------------------
 
 // AI Service: Question Generator
 app.post("/api/ai/generate-questions", async (req, res) => {
@@ -44,7 +80,7 @@ Buatkan draft bank soal berkualitas tinggi dengan spesifikasi berikut:
 - Tingkat Kesulitan: ${difficulty} (mudah, sedang, sulit, HOTS)
 - Level Kognitif Bloom: ${cognitiveLevel} (C1-C6)
 
-Kembalikan jawaban HANYA dalam format JSON valid (tanpa markdown codeblock pembungkus jika memungkinkan, atau format JSON bersih) dengan struktur:
+Kembalikan jawaban HANYA dalam format JSON valid dengan struktur:
 {
   "questions": [
     {
@@ -80,7 +116,6 @@ Kembalikan jawaban HANYA dalam format JSON valid (tanpa markdown codeblock pembu
     try {
       data = JSON.parse(text);
     } catch {
-      // Fallback clean markdown block
       const cleanJson = text.replace(/```json\n?|\n?```/g, "").trim();
       data = JSON.parse(cleanJson);
     }
@@ -193,13 +228,13 @@ app.post("/api/ai/chat-assistant", async (req, res) => {
     const { messages, userRole = "guru", userContext } = req.body;
     const ai = getGenAI();
 
-    const formattedHistory = (messages || []).map((m: any) => `${m.role === "user" ? "Pengguna" : "EduSmart AI"}: ${m.content}`).join("\n");
-    const lastUserMessage = messages && messages.length > 0 ? messages[messages.length - 1].content : "Halo EduSmart AI";
+    const formattedHistory = (messages || []).map((m: any) => `${m.role === "user" ? "Pengguna" : "smart MTs AI"}: ${m.content}`).join("\n");
+    const lastUserMessage = messages && messages.length > 0 ? messages[messages.length - 1].content : "Halo smart MTs AI";
 
-    const prompt = `Anda adalah "EduSmart AI Teaching Assistant" — asisten cerdas untuk sekolah terpadu di Indonesia.
+    const prompt = `Anda adalah "smart MTs AI Assistant" — asisten cerdas untuk madrasah tsanawiyah di Indonesia.
 Peran pengguna: ${userRole}.
 Konteks pengguna: ${JSON.stringify(userContext || {})}.
-Anda ahli dalam Kurikulum Merdeka & K13, pembuatan modul ajar, kisi-kisi soal HOTS, rubrik asesmen, strategi remedial, dan administrasi guru.
+Anda ahli dalam Kurikulum Merdeka & K13 Kemenag/Kemdikbud, pembuatan modul ajar, kisi-kisi soal HOTS, rubrik asesmen, strategi remedial, dan administrasi guru/wali kelas.
 
 Riwayat Percakapan:
 ${formattedHistory}
@@ -222,8 +257,19 @@ Tanggapi dengan ramah, profesional, praktis, dan berikan solusi langsung yang da
 });
 
 // Health check endpoint
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", app: "EduSmart School", timestamp: new Date().toISOString() });
+app.get("/api/health", async (req, res) => {
+  const dbStatus = await checkDatabaseConnection();
+  res.json({
+    status: "ok",
+    app: "smart MTs (sMTs)",
+    database: {
+      type: "PostgreSQL",
+      name: "smts_db",
+      connected: dbStatus.connected,
+      error: dbStatus.error,
+    },
+    timestamp: new Date().toISOString(),
+  });
 });
 
 async function startServer() {
@@ -242,7 +288,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`EduSmart School server running on http://0.0.0.0:${PORT}`);
+    console.log(`smart MTs (sMTs) server running on http://0.0.0.0:${PORT}`);
   });
 }
 
