@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useApp } from "../../context/AppContext";
 import { User, ClassRoom, Subject, ScheduleItem } from "../../types";
 import {
@@ -21,11 +21,17 @@ import {
   ShieldCheck,
   KeyRound,
   Sparkles,
+  Activity,
+  Wrench,
+  AlertTriangle,
+  CheckCircle2,
+  Info,
 } from "lucide-react";
 import { Modal } from "../common/Modal";
 import { exportUsersToExcel } from "../../lib/excelExport";
 import { MyQRCard } from "../attendance/MyQRCard";
 import { BatchQRPrintModal } from "../attendance/BatchQRPrintModal";
+import { api, DiagnosticResult } from "../../lib/api";
 
 export const MasterDataView: React.FC = () => {
   const {
@@ -33,7 +39,9 @@ export const MasterDataView: React.FC = () => {
     addUser,
     updateUser,
     deleteUser,
+    resetUserPassword,
     regenerateUserQRToken,
+    fetchUsers,
     classes,
     addClass,
     updateClass,
@@ -59,9 +67,18 @@ export const MasterDataView: React.FC = () => {
   const [isQRModalOpen, setIsQRModalOpen] = useState(false);
   const [isBatchPrintOpen, setIsBatchPrintOpen] = useState(false);
   const [regeneratingUserId, setRegeneratingUserId] = useState<string | null>(null);
+  const [resettingUserId, setResettingUserId] = useState<string | null>(null);
+
+  // Diagnostic & Repair States
+  const [isDiagnosticModalOpen, setIsDiagnosticModalOpen] = useState(false);
+  const [diagnosticData, setDiagnosticData] = useState<DiagnosticResult | null>(null);
+  const [isDiagnosticLoading, setIsDiagnosticLoading] = useState(false);
+  const [isRepairLoading, setIsRepairLoading] = useState(false);
+  const [repairResult, setRepairResult] = useState<{ success: boolean; message: string; repairedCount?: number } | null>(null);
 
   // Modal State
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [isSavingUser, setIsSavingUser] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [userFormData, setUserFormData] = useState({
     name: "",
@@ -130,6 +147,37 @@ export const MasterDataView: React.FC = () => {
     return matchRole && matchSearch && matchClass;
   });
 
+  // Open Diagnostic Modal
+  const openDiagnostic = async () => {
+    setIsDiagnosticModalOpen(true);
+    setRepairResult(null);
+    setIsDiagnosticLoading(true);
+    try {
+      const data = await api.getDiagnostic();
+      setDiagnosticData(data);
+    } catch (e: any) {
+      showToast("error", "Diagnostik Gagal", e?.message || "Tidak dapat menghubungi server.");
+    } finally {
+      setIsDiagnosticLoading(false);
+    }
+  };
+
+  const handleRunRepair = async () => {
+    setIsRepairLoading(true);
+    try {
+      const res = await api.runRepair();
+      setRepairResult(res);
+      const data = await api.getDiagnostic();
+      setDiagnosticData(data);
+      await fetchUsers();
+      showToast("success", "Perbaikan Berhasil", res.message);
+    } catch (e: any) {
+      showToast("error", "Perbaikan Gagal", e?.message || "Terjadi kesalahan saat perbaikan DB.");
+    } finally {
+      setIsRepairLoading(false);
+    }
+  };
+
   // Open User Modal
   const openAddUser = (role: User["role"]) => {
     setEditingUser(null);
@@ -168,6 +216,27 @@ export const MasterDataView: React.FC = () => {
     setIsQRModalOpen(true);
   };
 
+  const handleResetPassword = async (u: User) => {
+    const identifier = u.role === "guru" ? `NIP: ${u.nipOrNis || u.username}` : u.role === "siswa" ? `NIS: ${u.nipOrNis || u.username}` : `No HP: ${u.phone || u.username}`;
+    if (
+      window.confirm(
+        `Apakah Anda yakin ingin mereset password untuk ${u.name} (${identifier})?\n\nPassword akan dikembalikan ke default: 'smtslogin' dan pengguna wajib mengganti password saat login.`
+      )
+    ) {
+      setResettingUserId(u.id);
+      try {
+        const res = await resetUserPassword(u.id);
+        if (res.success) {
+          showToast("success", "Password Direset", `Password untuk ${u.name} berhasil direset ke 'smtslogin'.`);
+        }
+      } catch (err: any) {
+        showToast("error", "Gagal Reset Password", err?.message || "Terjadi kesalahan.");
+      } finally {
+        setResettingUserId(null);
+      }
+    }
+  };
+
   const handleRegenerateQR = async (u: User) => {
     if (
       window.confirm(
@@ -176,7 +245,7 @@ export const MasterDataView: React.FC = () => {
     ) {
       setRegeneratingUserId(u.id);
       try {
-        const newToken = regenerateUserQRToken(u.id);
+        const newToken = await regenerateUserQRToken(u.id);
         showToast("success", "QR Code Diregenerasi", `QR Code untuk ${u.name} berhasil diperbarui: ${newToken}`);
       } catch (err: any) {
         showToast("error", "Gagal Regenerasi QR", err?.message || "Terjadi kesalahan.");
@@ -186,16 +255,58 @@ export const MasterDataView: React.FC = () => {
     }
   };
 
-  const handleSaveUser = (e: React.FormEvent) => {
+  const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userFormData.name || !userFormData.username || !userFormData.email) return;
-
-    if (editingUser) {
-      updateUser(editingUser.id, userFormData);
-    } else {
-      addUser(userFormData);
+    if (!userFormData.name) {
+      showToast("error", "Validasi", "Nama lengkap wajib diisi.");
+      return;
     }
-    setIsUserModalOpen(false);
+
+    // Role-specific identifier validation
+    if (userFormData.role === "guru" && !userFormData.nipOrNis) {
+      showToast("error", "Validasi", "NIP / NUPTK Guru wajib diisi untuk identifier login.");
+      return;
+    }
+    if (userFormData.role === "siswa" && !userFormData.nipOrNis) {
+      showToast("error", "Validasi", "NIS Siswa wajib diisi untuk identifier login.");
+      return;
+    }
+    if (userFormData.role === "orangtua" && !userFormData.phone) {
+      showToast("error", "Validasi", "Nomor WhatsApp/HP Orang Tua wajib diisi untuk identifier login.");
+      return;
+    }
+
+    // Auto-generate username and email if empty
+    const sanitizedIdentifier = (userFormData.nipOrNis || userFormData.phone || userFormData.name.toLowerCase().replace(/\s+/g, "")).trim();
+    const finalUsername = userFormData.username.trim() || sanitizedIdentifier;
+    const finalEmail = userFormData.email.trim() || (
+      userFormData.role === "guru"
+        ? `${sanitizedIdentifier}@guru.mts.id`
+        : userFormData.role === "siswa"
+        ? `${sanitizedIdentifier}@siswa.mts.id`
+        : `ortu.${sanitizedIdentifier}@wali.mts.id`
+    );
+
+    const payload = {
+      ...userFormData,
+      username: finalUsername,
+      email: finalEmail,
+    };
+
+    setIsSavingUser(true);
+    try {
+      if (editingUser) {
+        updateUser(editingUser.id, payload);
+        setIsUserModalOpen(false);
+      } else {
+        const res = await addUser(payload);
+        if (res.success) {
+          setIsUserModalOpen(false);
+        }
+      }
+    } finally {
+      setIsSavingUser(false);
+    }
   };
 
   // Open Class Modal
@@ -323,9 +434,18 @@ export const MasterDataView: React.FC = () => {
         </div>
 
         {/* Action Button */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center flex-wrap gap-2">
           {(activeSubTab === "guru" || activeSubTab === "siswa" || activeSubTab === "orangtua") && (
             <>
+              <button
+                onClick={openDiagnostic}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors cursor-pointer"
+                title="Diagnostik & Perbaikan Akun Database PostgreSQL"
+              >
+                <Activity className="w-4 h-4 text-emerald-600" />
+                <span>Diagnostik DB</span>
+              </button>
+
               <button
                 onClick={() => exportUsersToExcel(filteredUsers, activeSubTab.toUpperCase())}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors"
@@ -551,13 +671,25 @@ export const MasterDataView: React.FC = () => {
                           </div>
                         </td>
                         <td className="px-5 py-3.5 text-slate-500">{u.phone || "-"}</td>
-                        <td className="px-5 py-3.5 text-right space-x-1">
+                        <td className="px-5 py-3.5 text-right space-x-1 whitespace-nowrap">
                           <button
                             onClick={() => handleViewQR(u)}
                             className="p-1.5 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
                             title="Lihat & Cetak Kartu QR"
                           >
                             <QrCode className="w-3.5 h-3.5 text-emerald-600" />
+                          </button>
+                          <button
+                            onClick={() => handleResetPassword(u)}
+                            disabled={resettingUserId === u.id}
+                            className="p-1.5 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                            title="Reset Password ke default (smtslogin)"
+                          >
+                            <KeyRound
+                              className={`w-3.5 h-3.5 text-amber-600 ${
+                                resettingUserId === u.id ? "animate-spin" : ""
+                              }`}
+                            />
                           </button>
                           <button
                             onClick={() => handleRegenerateQR(u)}
@@ -1132,6 +1264,141 @@ export const MasterDataView: React.FC = () => {
         isOpen={isBatchPrintOpen}
         onClose={() => setIsBatchPrintOpen(false)}
       />
+
+      {/* MODAL DIAGNOSTIK & PERBAIKAN DATABASE */}
+      <Modal
+        isOpen={isDiagnosticModalOpen}
+        onClose={() => setIsDiagnosticModalOpen(false)}
+        title="Diagnostik & Perbaikan Database Akun"
+        subtitle="Pemeriksaan integritas akun PostgreSQL, login identifier, dan token QR"
+        maxWidth="max-w-2xl"
+      >
+        <div className="space-y-4">
+          {isDiagnosticLoading ? (
+            <div className="py-12 flex flex-col items-center justify-center gap-3">
+              <RefreshCw className="w-8 h-8 text-emerald-600 animate-spin" />
+              <p className="text-xs text-slate-600 font-medium">Memeriksa struktur database PostgreSQL...</p>
+            </div>
+          ) : diagnosticData ? (
+            <div className="space-y-4">
+              {/* Overall Status Banner */}
+              <div
+                className={`p-4 rounded-xl border flex items-start gap-3 ${
+                  diagnosticData.summary.allHealthy
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+                    : "bg-amber-50 border-amber-200 text-amber-900"
+                }`}
+              >
+                {diagnosticData.summary.allHealthy ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                )}
+                <div className="space-y-1">
+                  <h4 className="text-xs font-bold">
+                    {diagnosticData.summary.allHealthy
+                      ? "Seluruh Akun & Identifier Normal"
+                      : "Ditemukan Masalah Akun / Password / QR Token"}
+                  </h4>
+                  <p className="text-[11px] leading-relaxed opacity-90">
+                    {diagnosticData.summary.allHealthy
+                      ? "Seluruh data Guru (NIP), Siswa (NIS), dan Orang Tua (No. HP) telah terverifikasi dengan password hash bcrypt dan QR Token aktif."
+                      : "Terdapat data akun atau hash password yang memerlukan perbaikan otomatis agar dapat login secara normal."}
+                  </p>
+                </div>
+              </div>
+
+              {/* Statistics Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                  <div className="text-lg font-black text-slate-900">{diagnosticData.totalUsers}</div>
+                  <div className="text-[10px] font-bold text-slate-500 uppercase">Total User</div>
+                </div>
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                  <div className="text-lg font-black text-emerald-700">{diagnosticData.counts.teacher}</div>
+                  <div className="text-[10px] font-bold text-slate-500 uppercase">Guru (NIP)</div>
+                </div>
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                  <div className="text-lg font-black text-blue-700">{diagnosticData.counts.student}</div>
+                  <div className="text-[10px] font-bold text-slate-500 uppercase">Siswa (NIS)</div>
+                </div>
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                  <div className="text-lg font-black text-purple-700">{diagnosticData.counts.parent}</div>
+                  <div className="text-[10px] font-bold text-slate-500 uppercase">Orang Tua (HP)</div>
+                </div>
+              </div>
+
+              {/* Issues Section */}
+              <div className="border border-slate-200 rounded-xl p-3.5 space-y-2 bg-white">
+                <h5 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5 text-slate-500" />
+                  Rincian Masalah Terdeteksi
+                </h5>
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between py-1 border-b border-slate-100">
+                    <span className="text-slate-600">Password belum di-hash bcrypt:</span>
+                    <span className={`font-bold ${diagnosticData.summary.invalidPasswordHashCount > 0 ? "text-rose-600" : "text-emerald-700"}`}>
+                      {diagnosticData.summary.invalidPasswordHashCount} akun
+                    </span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-100">
+                    <span className="text-slate-600">User tanpa QR Code aktif:</span>
+                    <span className={`font-bold ${diagnosticData.summary.missingQrCount > 0 ? "text-rose-600" : "text-emerald-700"}`}>
+                      {diagnosticData.summary.missingQrCount} akun
+                    </span>
+                  </div>
+                  <div className="flex justify-between py-1">
+                    <span className="text-slate-600">Teacher/Student/Parent yatim:</span>
+                    <span className={`font-bold ${diagnosticData.summary.orphanedProfilesCount > 0 ? "text-rose-600" : "text-emerald-700"}`}>
+                      {diagnosticData.summary.orphanedProfilesCount} profil
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {repairResult && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs">
+                  <p className="font-bold">Hasil Perbaikan:</p>
+                  <p className="text-[11px] mt-0.5">{repairResult.message}</p>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={openDiagnostic}
+                  disabled={isDiagnosticLoading || isRepairLoading}
+                  className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-900 flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Segarkan</span>
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsDiagnosticModalOpen(false)}
+                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+                  >
+                    Tutup
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRunRepair}
+                    disabled={isRepairLoading}
+                    className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Wrench className={`w-3.5 h-3.5 ${isRepairLoading ? "animate-spin" : ""}`} />
+                    <span>{isRepairLoading ? "Memperbaiki..." : "Jalankan Perbaikan Otomatis"}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="p-6 text-center text-slate-400">Gagal memuat diagnostik.</div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 };

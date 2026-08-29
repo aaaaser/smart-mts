@@ -5,7 +5,17 @@ import { Role, Gender, EmploymentStatus, StudentStatus } from "@prisma/client";
 
 export const usersRouter = Router();
 
-function generateSecureQRToken(prefix: string): string {
+// Shared Phone Normalization helper (e.g. "+6281234567890" / "6281234567890" / "0812-3456-7890" -> "081234567890")
+export function normalizePhoneNumber(phoneInput?: string | null): string {
+  if (!phoneInput) return "";
+  let cleaned = phoneInput.replace(/[\s\-\(\)\+]/g, "").trim();
+  if (cleaned.startsWith("62")) {
+    cleaned = "0" + cleaned.slice(2);
+  }
+  return cleaned;
+}
+
+export function generateSecureQRToken(prefix: string): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let token = "";
   for (let i = 0; i < 8; i++) {
@@ -14,7 +24,7 @@ function generateSecureQRToken(prefix: string): string {
   return `${prefix}-${token}`;
 }
 
-// GET all users
+// GET all users from PostgreSQL
 usersRouter.get("/", async (req: Request, res: Response): Promise<void> => {
   try {
     const dbStatus = await checkDatabaseConnection();
@@ -62,11 +72,12 @@ usersRouter.get("/", async (req: Request, res: Response): Promise<void> => {
         id: u.id,
         username: u.username,
         email: u.email,
-        role: u.role.toLowerCase(),
+        role: u.role === "TEACHER" ? "guru" : u.role === "STUDENT" ? "siswa" : u.role === "PARENT" ? "orangtua" : "admin",
         name: u.teacher?.fullName || u.student?.fullName || u.parent?.fullName || u.username,
         avatar: u.teacher?.photo || u.student?.photo || undefined,
         nip: u.teacher?.nip || undefined,
         nuptk: u.teacher?.nuptk || undefined,
+        nik: u.teacher?.nik || undefined,
         nis: u.student?.nis || undefined,
         nisn: u.student?.nisn || undefined,
         phone: u.teacher?.phone || u.parent?.phone || undefined,
@@ -99,8 +110,6 @@ usersRouter.get("/", async (req: Request, res: Response): Promise<void> => {
 usersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
   try {
     const {
-      username,
-      email,
       role, // "guru" | "siswa" | "admin" | "orangtua"
       name,
       nip,
@@ -108,6 +117,7 @@ usersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
       nik,
       nis,
       nisn,
+      nipOrNis,
       gender = "L",
       phone,
       address,
@@ -117,8 +127,10 @@ usersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
       childStudentId,
     } = req.body;
 
-    if (!username || !email || !name || !role) {
-      res.status(400).json({ success: false, message: "Username, email, nama, dan jenis pengguna wajib diisi." });
+    let { username, email } = req.body;
+
+    if (!name || !role) {
+      res.status(400).json({ success: false, message: "Nama dan jenis pengguna wajib diisi." });
       return;
     }
 
@@ -128,41 +140,125 @@ usersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Check unique username & email
-    const existing = await prisma.user.findFirst({
+    const normalizedRole = role.toString().trim().toLowerCase();
+    const isTeacherRole = normalizedRole === "guru" || normalizedRole === "teacher";
+    const isStudentRole = normalizedRole === "siswa" || normalizedRole === "student";
+    const isParentRole =
+      normalizedRole === "orangtua" ||
+      normalizedRole === "orang_tua" ||
+      normalizedRole === "parent" ||
+      normalizedRole === "wali";
+
+    const prismaRole: Role = isTeacherRole
+      ? Role.TEACHER
+      : isStudentRole
+      ? Role.STUDENT
+      : isParentRole
+      ? Role.PARENT
+      : Role.ADMIN;
+
+    // 1. Resolve & Validate Identifiers as String
+    let effectiveNip: string | null = null;
+    let effectiveNis: string | null = null;
+    let effectivePhone: string | null = null;
+
+    if (prismaRole === Role.TEACHER) {
+      const rawNip = (nip || nipOrNis || "").toString().trim();
+      if (!rawNip) {
+        res.status(400).json({ success: false, message: "NIP wajib diisi untuk data Guru." });
+        return;
+      }
+      effectiveNip = rawNip;
+
+      // Check NIP duplication in Teacher
+      const existingTeacher = await prisma.teacher.findFirst({
+        where: { nip: { equals: effectiveNip, mode: "insensitive" } },
+      });
+      if (existingTeacher) {
+        res.status(409).json({ success: false, message: `NIP ${effectiveNip} sudah terdaftar pada guru lain.` });
+        return;
+      }
+
+      if (!username) username = effectiveNip;
+      if (!email) email = `${effectiveNip}@guru.madrasah.id`;
+    } else if (prismaRole === Role.STUDENT) {
+      const rawNis = (nis || nipOrNis || "").toString().trim();
+      if (!rawNis) {
+        res.status(400).json({ success: false, message: "NIS wajib diisi untuk data Siswa." });
+        return;
+      }
+      effectiveNis = rawNis;
+
+      // Check NIS duplication in Student
+      const existingStudent = await prisma.student.findFirst({
+        where: { nis: { equals: effectiveNis, mode: "insensitive" } },
+      });
+      if (existingStudent) {
+        res.status(409).json({ success: false, message: `NIS ${effectiveNis} sudah terdaftar pada siswa lain.` });
+        return;
+      }
+
+      if (!username) username = effectiveNis;
+      if (!email) email = `${effectiveNis}@siswa.madrasah.id`;
+    } else if (prismaRole === Role.PARENT) {
+      const rawPhone = (phone || "").toString().trim();
+      effectivePhone = normalizePhoneNumber(rawPhone);
+      if (!effectivePhone || effectivePhone.length < 6) {
+        res.status(400).json({ success: false, message: "Nomor HP / WhatsApp yang valid wajib diisi untuk Orang Tua/Wali." });
+        return;
+      }
+
+      // Check Phone duplication in Parent
+      const existingParent = await prisma.parent.findFirst({
+        where: { phone: effectivePhone },
+      });
+      if (existingParent) {
+        res.status(409).json({ success: false, message: `Nomor HP ${effectivePhone} sudah terdaftar untuk wali murid lain.` });
+        return;
+      }
+
+      if (!username) username = effectivePhone;
+      if (!email) email = `ortu.${effectivePhone}@wali.madrasah.id`;
+    } else {
+      // Admin
+      if (!username || !email) {
+        res.status(400).json({ success: false, message: "Username dan email wajib diisi untuk Admin." });
+        return;
+      }
+    }
+
+    const cleanUsername = username.toString().trim().toLowerCase();
+    const cleanEmail = email.toString().trim().toLowerCase();
+
+    // Check unique username & email in User table
+    const existingUser = await prisma.user.findFirst({
       where: {
-        OR: [{ username: username.toLowerCase() }, { email: email.toLowerCase() }],
+        OR: [{ username: cleanUsername }, { email: cleanEmail }],
       },
     });
 
-    if (existing) {
-      res.status(409).json({ success: false, message: "Username atau email sudah digunakan." });
+    if (existingUser) {
+      res.status(409).json({
+        success: false,
+        message: `Username '${cleanUsername}' atau Email '${cleanEmail}' sudah digunakan di database.`,
+      });
       return;
     }
 
-    // Default password 'smtslogin' hashed securely with bcrypt (10 rounds)
+    // Default password 'smtslogin' hashed securely with bcrypt (10 rounds) - ONLY HASHED ONCE
     const defaultPassword = "smtslogin";
     const passwordHash = await bcrypt.hash(defaultPassword, 10);
 
-    const prismaRole: Role =
-      role === "guru" || role === "TEACHER"
-        ? Role.TEACHER
-        : role === "siswa" || role === "STUDENT"
-        ? Role.STUDENT
-        : role === "orangtua" || role === "PARENT"
-        ? Role.PARENT
-        : Role.ADMIN;
-
-    const qrPrefix = prismaRole === Role.TEACHER ? "SMTS-TCH" : prismaRole === Role.STUDENT ? "SMTS-STU" : "SMTS-ADM";
+    const qrPrefix = prismaRole === Role.TEACHER ? "SMTS-TCH" : prismaRole === Role.STUDENT ? "SMTS-STU" : prismaRole === Role.PARENT ? "SMTS-ORT" : "SMTS-ADM";
     const secureQrToken = generateSecureQRToken(qrPrefix);
 
-    // Run database transaction
+    // Transaction execution
     const newUser = await prisma.$transaction(async (tx) => {
       // 1. Create User with mustChangePassword = true
       const user = await tx.user.create({
         data: {
-          username: username.toLowerCase(),
-          email: email.toLowerCase(),
+          username: cleanUsername,
+          email: cleanEmail,
           passwordHash,
           role: prismaRole,
           isActive: true,
@@ -185,11 +281,11 @@ usersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
           data: {
             userId: user.id,
             fullName: name,
-            nip: nip || null,
-            nuptk: nuptk || null,
-            nik: nik || null,
+            nip: effectiveNip,
+            nuptk: nuptk ? String(nuptk).trim() : null,
+            nik: nik ? String(nik).trim() : null,
             gender: gender === "P" ? Gender.P : Gender.L,
-            phone: phone || null,
+            phone: phone ? normalizePhoneNumber(phone) : null,
             address: address || null,
             employmentStatus: EmploymentStatus.GTY,
           },
@@ -213,8 +309,8 @@ usersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
           data: {
             userId: user.id,
             fullName: name,
-            nis: nis || `NIS-${Date.now().toString().slice(-6)}`,
-            nisn: nisn || null,
+            nis: effectiveNis!,
+            nisn: nisn ? String(nisn).trim() : null,
             gender: gender === "P" ? Gender.P : Gender.L,
             address: address || null,
             status: StudentStatus.ACTIVE,
@@ -240,7 +336,7 @@ usersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
           data: {
             userId: user.id,
             fullName: name,
-            phone: phone || null,
+            phone: effectivePhone,
             address: address || null,
           },
         });
@@ -262,8 +358,8 @@ usersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
           userId: user.id,
           userName: name,
           userRole: prismaRole,
-          action: prismaRole === Role.TEACHER ? "CREATE_TEACHER" : prismaRole === Role.STUDENT ? "CREATE_STUDENT" : "CREATE_USER",
-          details: `Menambahkan akun ${name} (${username}) dengan role ${prismaRole}, password awal default (smtslogin), dan QR Token ${secureQrToken}`,
+          action: prismaRole === Role.TEACHER ? "CREATE_TEACHER" : prismaRole === Role.STUDENT ? "CREATE_STUDENT" : prismaRole === Role.PARENT ? "CREATE_PARENT" : "CREATE_USER",
+          details: `Menambahkan akun ${name} (ID: ${cleanUsername}) dengan role ${prismaRole}, password awal 'smtslogin', and QR Token ${secureQrToken}`,
           ipOrDevice: req.ip || "127.0.0.1",
         },
       });
@@ -273,12 +369,68 @@ usersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
 
     res.status(201).json({
       success: true,
-      message: `User ${name} berhasil dibuat dengan password awal 'smtslogin' dan QR Token ${secureQrToken}`,
-      data: { id: newUser.id, username: newUser.username, qrToken: secureQrToken, mustChangePassword: true },
+      message: `Akun ${name} berhasil dibuat dengan password awal 'smtslogin' dan QR Token ${secureQrToken}`,
+      data: {
+        id: newUser.id,
+        username: newUser.username,
+        role: newUser.role.toLowerCase(),
+        qrToken: secureQrToken,
+        mustChangePassword: true,
+      },
     });
   } catch (error: any) {
     console.error("Create user transaction error:", error);
-    res.status(500).json({ success: false, message: error?.message || "Gagal membuat user" });
+    res.status(500).json({ success: false, message: error?.message || "Gagal membuat pengguna di database." });
+  }
+});
+
+// POST Admin Reset Password for any user
+usersRouter.post("/:id/reset-password", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+      include: { teacher: true, student: true, parent: true },
+    });
+
+    if (!user) {
+      res.status(404).json({ success: false, message: "Pengguna tidak ditemukan." });
+      return;
+    }
+
+    // Default password 'smtslogin' hashed securely
+    const defaultPassword = "smtslogin";
+    const passwordHash = await bcrypt.hash(defaultPassword, 10);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash,
+          mustChangePassword: true,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: user.id,
+          userName: user.teacher?.fullName || user.student?.fullName || user.parent?.fullName || user.username,
+          userRole: user.role,
+          action: "RESET_PASSWORD_ADMIN",
+          details: `Admin mereset password akun ${user.username} (${user.role}) ke kata sandi awal 'smtslogin' dengan kewajiban ganti kata sandi.`,
+          ipOrDevice: req.ip || "127.0.0.1",
+        },
+      });
+    });
+
+    res.json({
+      success: true,
+      message: `Kata sandi akun ${user.username} berhasil direset ke 'smtslogin'. Pengguna wajib mengganti kata sandi saat login berikutnya.`,
+    });
+  } catch (error: any) {
+    console.error("Reset password error:", error);
+    res.status(500).json({ success: false, message: error?.message || "Gagal mereset kata sandi." });
   }
 });
 
@@ -289,7 +441,7 @@ usersRouter.post("/:id/regenerate-qr", async (req: Request, res: Response): Prom
 
     const user = await prisma.user.findUnique({
       where: { id },
-      include: { qrCodes: true, teacher: true, student: true },
+      include: { qrCodes: true, teacher: true, student: true, parent: true },
     });
 
     if (!user) {
@@ -297,7 +449,7 @@ usersRouter.post("/:id/regenerate-qr", async (req: Request, res: Response): Prom
       return;
     }
 
-    const prefix = user.role === "TEACHER" ? "SMTS-TCH" : user.role === "STUDENT" ? "SMTS-STU" : "SMTS-ADM";
+    const prefix = user.role === "TEACHER" ? "SMTS-TCH" : user.role === "STUDENT" ? "SMTS-STU" : user.role === "PARENT" ? "SMTS-ORT" : "SMTS-ADM";
     const newQrToken = generateSecureQRToken(prefix);
 
     await prisma.$transaction(async (tx) => {
@@ -320,7 +472,7 @@ usersRouter.post("/:id/regenerate-qr", async (req: Request, res: Response): Prom
       await tx.auditLog.create({
         data: {
           userId: user.id,
-          userName: user.teacher?.fullName || user.student?.fullName || user.username,
+          userName: user.teacher?.fullName || user.student?.fullName || user.parent?.fullName || user.username,
           userRole: user.role,
           action: "QR_REGENERATED",
           details: `Regenerasi QR Code berhasil untuk ${user.username}. QR Token baru: ${newQrToken} (QR lama dinonaktifkan)`,
@@ -339,6 +491,173 @@ usersRouter.post("/:id/regenerate-qr", async (req: Request, res: Response): Prom
   }
 });
 
+// GET Database Diagnostic for Accounts & Authentication
+usersRouter.get("/diagnostic", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const dbStatus = await checkDatabaseConnection();
+    if (!dbStatus.connected) {
+      res.status(503).json({ success: false, message: "Database offline" });
+      return;
+    }
+
+    // 1. Check Teachers without User
+    const teachers = await prisma.teacher.findMany({ include: { user: true } });
+    const teachersWithoutUser = teachers.filter((t) => !t.user);
+
+    // 2. Check Students without User
+    const students = await prisma.student.findMany({ include: { user: true } });
+    const studentsWithoutUser = students.filter((s) => !s.user);
+
+    // 3. Check Parents without User
+    const parents = await prisma.parent.findMany({ include: { user: true } });
+    const parentsWithoutUser = parents.filter((p) => !p.user);
+
+    // 4. Check Users without corresponding Profile
+    const users = await prisma.user.findMany({
+      include: { teacher: true, student: true, parent: true, qrCodes: { where: { isActive: true } } },
+    });
+
+    const teacherUsersWithoutTeacher = users.filter((u) => u.role === Role.TEACHER && !u.teacher);
+    const studentUsersWithoutStudent = users.filter((u) => u.role === Role.STUDENT && !u.student);
+    const parentUsersWithoutParent = users.filter((u) => u.role === Role.PARENT && !u.parent);
+
+    // 5. Check Users with missing or empty passwordHash
+    const usersWithInvalidPassword = users.filter(
+      (u) => !u.passwordHash || u.passwordHash.length < 10 || !u.passwordHash.startsWith("$2")
+    );
+
+    // 6. Check Users without active QR Code
+    const usersWithoutActiveQr = users.filter((u) => !u.qrCodes || u.qrCodes.length === 0);
+
+    // 7. Check Duplicate NIPs / NISs / Phones
+    const nipCounts = new Map<string, number>();
+    teachers.forEach((t) => {
+      if (t.nip) nipCounts.set(t.nip, (nipCounts.get(t.nip) || 0) + 1);
+    });
+    const duplicateNips = Array.from(nipCounts.entries()).filter(([_, count]) => count > 1).map(([nip]) => nip);
+
+    const nisCounts = new Map<string, number>();
+    students.forEach((s) => {
+      if (s.nis) nisCounts.set(s.nis, (nisCounts.get(s.nis) || 0) + 1);
+    });
+    const duplicateNiss = Array.from(nisCounts.entries()).filter(([_, count]) => count > 1).map(([nis]) => nis);
+
+    const isHealthy =
+      teachersWithoutUser.length === 0 &&
+      studentsWithoutUser.length === 0 &&
+      parentsWithoutUser.length === 0 &&
+      teacherUsersWithoutTeacher.length === 0 &&
+      studentUsersWithoutStudent.length === 0 &&
+      parentUsersWithoutParent.length === 0 &&
+      usersWithInvalidPassword.length === 0 &&
+      usersWithoutActiveQr.length === 0;
+
+    res.json({
+      success: true,
+      isHealthy,
+      summary: {
+        totalUsers: users.length,
+        totalTeachers: teachers.length,
+        totalStudents: students.length,
+        totalParents: parents.length,
+      },
+      issues: {
+        teachersWithoutUserCount: teachersWithoutUser.length,
+        studentsWithoutUserCount: studentsWithoutUser.length,
+        parentsWithoutUserCount: parentsWithoutUser.length,
+        teacherUsersWithoutTeacherCount: teacherUsersWithoutTeacher.length,
+        studentUsersWithoutStudentCount: studentUsersWithoutStudent.length,
+        parentUsersWithoutParentCount: parentUsersWithoutParent.length,
+        usersWithInvalidPasswordCount: usersWithInvalidPassword.length,
+        usersWithoutActiveQrCount: usersWithoutActiveQr.length,
+        duplicateNips,
+        duplicateNiss,
+      },
+      details: {
+        usersWithInvalidPassword: usersWithInvalidPassword.map((u) => ({ id: u.id, username: u.username, role: u.role })),
+        usersWithoutActiveQr: usersWithoutActiveQr.map((u) => ({ id: u.id, username: u.username, role: u.role })),
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error?.message });
+  }
+});
+
+// POST Safe Database Repair for Account Relations & Passwords
+usersRouter.post("/repair", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const defaultPassword = "smtslogin";
+    const defaultPasswordHash = await bcrypt.hash(defaultPassword, 10);
+
+    const repairLog: string[] = [];
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Fix Users with missing/corrupted password hashes
+      const invalidPassUsers = await tx.user.findMany({
+        where: {
+          OR: [
+            { passwordHash: "" },
+            { passwordHash: { not: { startsWith: "$2" } } },
+          ],
+        },
+      });
+
+      for (const u of invalidPassUsers) {
+        await tx.user.update({
+          where: { id: u.id },
+          data: {
+            passwordHash: defaultPasswordHash,
+            mustChangePassword: true,
+          },
+        });
+        repairLog.push(`Perbaiki password hash user: ${u.username} (${u.role}) -> reset ke default smtslogin`);
+      }
+
+      // 2. Ensure all users have an active UserQrCode
+      const users = await tx.user.findMany({
+        include: { qrCodes: { where: { isActive: true } } },
+      });
+
+      for (const u of users) {
+        if (!u.qrCodes || u.qrCodes.length === 0) {
+          const prefix = u.role === "TEACHER" ? "SMTS-TCH" : u.role === "STUDENT" ? "SMTS-STU" : u.role === "PARENT" ? "SMTS-ORT" : "SMTS-ADM";
+          const newQrToken = generateSecureQRToken(prefix);
+          await tx.userQrCode.create({
+            data: {
+              userId: u.id,
+              qrToken: newQrToken,
+              isActive: true,
+            },
+          });
+          repairLog.push(`Buat QR Code baru untuk user: ${u.username} (${newQrToken})`);
+        }
+      }
+
+      // 3. Create audit log for the repair action
+      await tx.auditLog.create({
+        data: {
+          userId: "system",
+          userName: "Database Diagnostic Repair",
+          userRole: Role.ADMIN,
+          action: "REPAIR_ACCOUNTS",
+          details: `Menjalankan perbaikan database akun: ${repairLog.length} item diperbaiki.`,
+          ipOrDevice: req.ip || "127.0.0.1",
+        },
+      });
+    });
+
+    res.json({
+      success: true,
+      message: `Proses perbaikan berhasil diselesaikan. Total ${repairLog.length} data diselaraskan.`,
+      repairCount: repairLog.length,
+      repairLog,
+    });
+  } catch (error: any) {
+    console.error("Repair error:", error);
+    res.status(500).json({ success: false, message: error?.message || "Gagal melakukan perbaikan akun." });
+  }
+});
+
 // Soft Delete / Deactivate User (Never delete historical records cascade)
 usersRouter.delete("/:id", async (req: Request, res: Response): Promise<void> => {
   try {
@@ -347,13 +666,13 @@ usersRouter.delete("/:id", async (req: Request, res: Response): Promise<void> =>
     const user = await prisma.user.update({
       where: { id },
       data: { isActive: false },
-      include: { teacher: true, student: true },
+      include: { teacher: true, student: true, parent: true },
     });
 
     await prisma.auditLog.create({
       data: {
         userId: user.id,
-        userName: user.teacher?.fullName || user.student?.fullName || user.username,
+        userName: user.teacher?.fullName || user.student?.fullName || user.parent?.fullName || user.username,
         userRole: user.role,
         action: "DEACTIVATE_USER",
         details: `User ${user.username} dinonaktifkan (data historis absensi dan nilai tetap aman)`,

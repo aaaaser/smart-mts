@@ -2,17 +2,9 @@ import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import { Role } from "@prisma/client";
 import { prisma, checkDatabaseConnection } from "../../lib/prisma";
+import { normalizePhoneNumber } from "./users.routes";
 
 export const authRouter = Router();
-
-// Helper to normalize phone numbers (e.g. 081234567890 vs 6281234567890 vs +6281234567890)
-function normalizePhoneNumber(phoneInput: string): string {
-  let cleaned = phoneInput.replace(/[\s\-\(\)\+]/g, "").trim();
-  if (cleaned.startsWith("62")) {
-    cleaned = "0" + cleaned.slice(2);
-  }
-  return cleaned;
-}
 
 // Helper to normalize and map role strings to Prisma Role enum
 function mapRole(roleInput?: string): { roleEnum: Role; label: string; identifierName: string } | null {
@@ -39,12 +31,12 @@ function mapRole(roleInput?: string): { roleEnum: Role; label: string; identifie
   return null;
 }
 
-// Login with Identity-based Credentials (NIP for Guru, NIS for Siswa, No HP for Parent, Username/Email for Admin)
+// POST /api/auth/login - Centralized Identity Authentication
 authRouter.post("/login", async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { usernameOrEmail, identifier, password, role } = req.body;
-    const loginIdentifier = (identifier || usernameOrEmail || "").toString().trim();
+  const { usernameOrEmail, identifier, password, role } = req.body;
+  const loginIdentifier = (identifier || usernameOrEmail || "").toString().trim();
 
+  try {
     if (!role) {
       res.status(400).json({
         success: false,
@@ -70,8 +62,17 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
+    // Safe debug logging (NEVER log raw password)
+    console.log("[AUTH_LOGIN_ATTEMPT]", {
+      role: mappedRole.label,
+      identifier: loginIdentifier,
+      ip: req.ip,
+      timestamp: new Date().toISOString(),
+    });
+
     const dbStatus = await checkDatabaseConnection();
     if (!dbStatus.connected) {
+      console.log("[AUTH_FAILURE]", { reason: "DATABASE_OFFLINE" });
       res.status(503).json({
         success: false,
         message: "Database PostgreSQL belum terhubung. Pastikan service PostgreSQL telah aktif.",
@@ -82,7 +83,7 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
 
     let user: any = null;
 
-    // 1. GURU: Search by Teacher.nip (primary)
+    // 1. GURU: Primary lookup by Teacher.nip (case-insensitive string) -> User
     if (mappedRole.roleEnum === Role.TEACHER) {
       user = await prisma.user.findFirst({
         where: {
@@ -94,12 +95,17 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
           ],
         },
         include: {
-          teacher: true,
+          teacher: {
+            include: {
+              teacherSubjects: { include: { subject: true } },
+              teacherAssignments: { include: { assignmentType: true, class: true } },
+            },
+          },
           qrCodes: { where: { isActive: true }, take: 1 },
         },
       });
     }
-    // 2. SISWA: Search by Student.nis (primary)
+    // 2. SISWA: Primary lookup by Student.nis (case-insensitive string) -> User
     else if (mappedRole.roleEnum === Role.STUDENT) {
       user = await prisma.user.findFirst({
         where: {
@@ -123,18 +129,23 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
         },
       });
     }
-    // 3. ORANG TUA / WALI: Search by Parent phone (normalized)
+    // 3. ORANG TUA / WALI: Primary lookup by Parent.phone (normalized string) -> User
     else if (mappedRole.roleEnum === Role.PARENT) {
       const normalizedPhone = normalizePhoneNumber(loginIdentifier);
+      const orConditions: any[] = [
+        { parent: { phone: { equals: loginIdentifier } } },
+        { username: { equals: loginIdentifier, mode: "insensitive" } },
+        { email: { equals: loginIdentifier, mode: "insensitive" } },
+      ];
+      if (normalizedPhone) {
+        orConditions.push({ parent: { phone: { equals: normalizedPhone } } });
+        orConditions.push({ username: { equals: normalizedPhone, mode: "insensitive" } });
+      }
+
       user = await prisma.user.findFirst({
         where: {
           role: Role.PARENT,
-          OR: [
-            { parent: { phone: { contains: normalizedPhone } } },
-            { parent: { phone: { contains: loginIdentifier } } },
-            { username: { equals: loginIdentifier, mode: "insensitive" } },
-            { email: { equals: loginIdentifier, mode: "insensitive" } },
-          ],
+          OR: orConditions,
         },
         include: {
           parent: {
@@ -146,7 +157,7 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
         },
       });
     }
-    // 4. ADMIN: Search by username / email
+    // 4. ADMIN: Primary lookup by username or email
     else {
       user = await prisma.user.findFirst({
         where: {
@@ -162,7 +173,9 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
       });
     }
 
+    // Step A: Check if User exists
     if (!user) {
+      console.log("[AUTH_FAILURE]", { role: mappedRole.label, reason: "USER_NOT_FOUND", identifier: loginIdentifier });
       res.status(401).json({
         success: false,
         message: `${mappedRole.identifierName} atau kata sandi yang Anda masukkan salah.`,
@@ -170,26 +183,56 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    if (!user.isActive) {
+    console.log("[AUTH_USER_FOUND]", { userId: user.id, username: user.username, role: user.role });
+
+    // Step B: Role match verification
+    if (user.role !== mappedRole.roleEnum) {
+      console.log("[AUTH_FAILURE]", { userId: user.id, reason: "ROLE_MISMATCH", actualRole: user.role, requestedRole: mappedRole.roleEnum });
       res.status(403).json({
         success: false,
-        message: "Akun Anda dinonaktifkan. Silakan hubungi administrator madrasah.",
+        message: "Jenis pengguna tidak sesuai dengan akun.",
       });
       return;
     }
 
-    // Verify password hash (or plain text fallback if unhashed)
+    console.log("[AUTH_ROLE_VALID]", { userId: user.id, role: user.role });
+
+    // Step C: Account active verification
+    if (!user.isActive) {
+      console.log("[AUTH_FAILURE]", { userId: user.id, reason: "ACCOUNT_INACTIVE" });
+      res.status(403).json({
+        success: false,
+        message: "Akun tidak aktif. Hubungi administrator.",
+      });
+      return;
+    }
+
+    // Step D: Password verification (bcrypt)
     let isMatch = false;
     try {
       isMatch = await bcrypt.compare(password, user.passwordHash);
-    } catch {
+    } catch (bcryptErr) {
+      console.error("Bcrypt compare error:", bcryptErr);
       isMatch = false;
     }
+
+    // Emergency plaintext fallback ONLY IF legacy unhashed password exists in database
     if (!isMatch && user.passwordHash === password) {
       isMatch = true;
+      // Auto-migrate to bcrypt hash
+      try {
+        const upgradedHash = await bcrypt.hash(password, 10);
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { passwordHash: upgradedHash },
+        });
+      } catch (upgradeErr) {
+        console.warn("Could not upgrade plaintext password:", upgradeErr);
+      }
     }
 
     if (!isMatch) {
+      console.log("[AUTH_FAILURE]", { userId: user.id, reason: "INVALID_PASSWORD" });
       res.status(401).json({
         success: false,
         message: `${mappedRole.identifierName} atau kata sandi yang Anda masukkan salah.`,
@@ -197,22 +240,16 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    // Verify Role matches the selected role
-    if (user.role !== mappedRole.roleEnum) {
-      res.status(403).json({
-        success: false,
-        message: `Akun ini tidak terdaftar sebagai ${mappedRole.label}. Silakan pilih jenis pengguna yang sesuai.`,
-      });
-      return;
-    }
+    console.log("[AUTH_PASSWORD_VALID]", { userId: user.id });
+    console.log("[AUTH_SUCCESS]", { userId: user.id, username: user.username, mustChangePassword: user.mustChangePassword });
 
-    // Update lastLoginAt
+    // Update lastLoginAt in PostgreSQL
     await prisma.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
 
-    // Create Audit Log
+    // Create Audit Log safely
     try {
       await prisma.auditLog.create({
         data: {
@@ -220,7 +257,7 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
           userName: user.teacher?.fullName || user.student?.fullName || user.parent?.fullName || user.username,
           userRole: user.role,
           action: "LOGIN",
-          details: `User ${user.username} berhasil login sebagai ${mappedRole.label} menggunakan ${mappedRole.identifierName}: ${loginIdentifier}`,
+          details: `User ${user.username} berhasil login sebagai ${mappedRole.label} via ${mappedRole.identifierName}: ${loginIdentifier}`,
           ipOrDevice: req.ip || "127.0.0.1",
         },
       });
@@ -230,7 +267,7 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
 
     const activeQr = user.qrCodes?.[0];
 
-    // Transform user for frontend consumption
+    // Clean payload for frontend
     const userPayload = {
       id: user.id,
       username: user.username,
@@ -258,12 +295,15 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
       mustChangePassword: user.mustChangePassword ?? false,
     });
   } catch (error: any) {
-    console.error("Login error:", error);
-    res.status(500).json({ success: false, message: "Terjadi kesalahan pada server saat proses login." });
+    console.error("Login unexpected error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Terjadi kesalahan pada server saat proses login.",
+    });
   }
 });
 
-// Change Password Endpoint (First Login / Regular Password Change)
+// POST /api/auth/change-password - Change Password Endpoint (First Login / Regular)
 authRouter.post("/change-password", async (req: Request, res: Response): Promise<void> => {
   try {
     const { userId, oldPassword, newPassword, confirmPassword } = req.body;
@@ -284,7 +324,7 @@ authRouter.post("/change-password", async (req: Request, res: Response): Promise
       return;
     }
 
-    if (newPassword === "smtslogin") {
+    if (newPassword.toLowerCase() === "smtslogin") {
       res.status(400).json({
         success: false,
         message: "Kata sandi baru tidak boleh sama dengan kata sandi bawaan (smtslogin).",
@@ -335,7 +375,7 @@ authRouter.post("/change-password", async (req: Request, res: Response): Promise
       return;
     }
 
-    // Hash new password securely with bcrypt
+    // Hash new password securely with bcrypt (10 rounds) - ONLY ONCE
     const newPasswordHash = await bcrypt.hash(newPassword, 10);
 
     await prisma.user.update({
@@ -354,7 +394,7 @@ authRouter.post("/change-password", async (req: Request, res: Response): Promise
           userName: user.teacher?.fullName || user.student?.fullName || user.parent?.fullName || user.username,
           userRole: user.role,
           action: "CHANGE_PASSWORD",
-          details: `User ${user.username} (${user.role}) berhasil memperbarui kata sandi akun`,
+          details: `User ${user.username} (${user.role}) berhasil memperbarui kata sandi akun dan menyelesaikan aktivasi login.`,
           ipOrDevice: req.ip || "127.0.0.1",
         },
       });
@@ -364,75 +404,10 @@ authRouter.post("/change-password", async (req: Request, res: Response): Promise
 
     res.json({
       success: true,
-      message: "Kata sandi berhasil diperbarui. Akun Anda siap digunakan.",
+      message: "Kata sandi berhasil diperbarui. Akun Anda telah aktif sepenuhnya.",
     });
   } catch (error: any) {
     console.error("Change password error:", error);
     res.status(500).json({ success: false, message: error?.message || "Gagal mengubah kata sandi." });
   }
 });
-
-// Switch role / Quick role mock (for dev testing)
-authRouter.post("/switch-role", async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { role } = req.body;
-
-    const dbStatus = await checkDatabaseConnection();
-    if (!dbStatus.connected) {
-      res.status(503).json({ success: false, message: "Database offline" });
-      return;
-    }
-
-    let targetRole = "ADMIN";
-    if (role === "guru" || role === "TEACHER") targetRole = "TEACHER";
-    if (role === "siswa" || role === "STUDENT") targetRole = "STUDENT";
-    if (role === "orangtua" || role === "PARENT") targetRole = "PARENT";
-
-    const user = await prisma.user.findFirst({
-      where: { role: targetRole as any, isActive: true },
-      include: {
-        teacher: true,
-        student: {
-          include: {
-            classMemberships: {
-              where: { status: "ACTIVE" },
-              include: { class: true },
-            },
-          },
-        },
-        parent: true,
-        qrCodes: { where: { isActive: true }, take: 1 },
-      },
-    });
-
-    if (!user) {
-      res.status(404).json({ success: false, message: `Tidak ada user dengan role ${targetRole} di database.` });
-      return;
-    }
-
-    const activeQr = user.qrCodes?.[0];
-
-    const userPayload = {
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      role: user.role.toLowerCase(),
-      name: user.teacher?.fullName || user.student?.fullName || user.parent?.fullName || user.username,
-      nip: user.teacher?.nip || undefined,
-      nis: user.student?.nis || undefined,
-      nisn: user.student?.nisn || undefined,
-      classId: user.student?.classMemberships?.[0]?.classId || undefined,
-      className: user.student?.classMemberships?.[0]?.class?.name || undefined,
-      qrToken: activeQr?.qrToken || "SMTS-UNASSIGNED",
-      qrIsActive: activeQr?.isActive ?? true,
-      teacherId: user.teacher?.id,
-      studentId: user.student?.id,
-      mustChangePassword: user.mustChangePassword ?? false,
-    };
-
-    res.json({ success: true, user: userPayload });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error?.message });
-  }
-});
-

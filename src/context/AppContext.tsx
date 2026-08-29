@@ -91,10 +91,12 @@ interface AppContextType {
 
   // Master Data
   users: User[];
-  addUser: (user: Omit<User, "id">) => void;
+  addUser: (user: Omit<User, "id">) => Promise<{ success: boolean; message: string }>;
   updateUser: (id: string, user: Partial<User>) => void;
   deleteUser: (id: string) => void;
-  regenerateUserQRToken: (userId: string) => string;
+  resetUserPassword: (userId: string) => Promise<{ success: boolean; message: string }>;
+  regenerateUserQRToken: (userId: string) => Promise<string>;
+  fetchUsers: () => Promise<void>;
 
   classes: ClassRoom[];
   addClass: (cls: Omit<ClassRoom, "id">) => void;
@@ -633,26 +635,108 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // User CRUD
-  const addUser = (userData: Omit<User, "id">) => {
-    const roleType = userData.role === "siswa" ? "STD" : userData.role === "guru" ? "TCH" : "ADM";
-    const newUser: User = {
-      id: `usr_${Date.now()}`,
-      ...userData,
-      qrToken: userData.qrToken || generateSecureQRToken(roleType),
-      qrGeneratedAt: new Date().toISOString(),
-      qrIsActive: true,
-      avatar: userData.avatar || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80`,
-    };
-    setUsers((prev) => [...prev, newUser]);
-    addAuditLog("Tambah Pengguna", `Menambahkan akun baru: ${newUser.name} (${newUser.role}) dengan QR Token ${newUser.qrToken}`);
-    showToast("success", "Pengguna Ditambahkan", `${newUser.name} berhasil didaftarkan.`);
+  const fetchUsers = useCallback(async () => {
+    try {
+      const serverUsers = await api.getUsers();
+      if (serverUsers && serverUsers.length > 0) {
+        setUsers((prev) => {
+          const serverUserMap = new Map(serverUsers.map((u) => [u.id, u]));
+          const merged = [...serverUsers];
+          for (const localU of prev) {
+            if (!serverUserMap.has(localU.id) && !serverUsers.some((su) => su.username === localU.username)) {
+              merged.push(localU);
+            }
+          }
+          return merged;
+        });
+      }
+    } catch (e) {
+      console.warn("Could not sync users from server:", e);
+    }
+  }, []);
+
+  const addUser = async (userData: Omit<User, "id">): Promise<{ success: boolean; message: string }> => {
+    const roleType = userData.role === "siswa" ? "STD" : userData.role === "guru" ? "TCH" : userData.role === "admin" ? "ADM" : "USER";
+    const localQrToken = userData.qrToken || generateSecureQRToken(roleType);
+
+    try {
+      const res = await api.createUser({
+        ...userData,
+        qrToken: localQrToken,
+      });
+
+      if (res.success) {
+        const newUser: User = {
+          id: res.data?.id || `usr_${Date.now()}`,
+          ...userData,
+          qrToken: res.data?.qrToken || localQrToken,
+          qrGeneratedAt: new Date().toISOString(),
+          qrIsActive: true,
+          mustChangePassword: true,
+          avatar: userData.avatar || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80`,
+        };
+        setUsers((prev) => [newUser, ...prev]);
+        addAuditLog("Tambah Pengguna", `Menambahkan akun baru: ${newUser.name} (${newUser.role}) dengan password awal 'smtslogin' and QR ${newUser.qrToken}`);
+        showToast("success", "Pengguna Ditambahkan", `${newUser.name} berhasil didaftarkan ke database.`);
+        return { success: true, message: res.message || `${newUser.name} berhasil didaftarkan.` };
+      } else {
+        showToast("error", "Gagal Menambahkan", res.message);
+        return { success: false, message: res.message };
+      }
+    } catch (e: any) {
+      const newUser: User = {
+        id: `usr_${Date.now()}`,
+        ...userData,
+        qrToken: localQrToken,
+        qrGeneratedAt: new Date().toISOString(),
+        qrIsActive: true,
+        mustChangePassword: true,
+        avatar: userData.avatar || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80`,
+      };
+      setUsers((prev) => [newUser, ...prev]);
+      addAuditLog("Tambah Pengguna", `Menambahkan akun baru: ${newUser.name} (${newUser.role})`);
+      showToast("success", "Pengguna Ditambahkan", `${newUser.name} berhasil didaftarkan.`);
+      return { success: true, message: `${newUser.name} berhasil didaftarkan.` };
+    }
   };
 
-  const regenerateUserQRToken = (userId: string): string => {
+  const resetUserPassword = async (userId: string): Promise<{ success: boolean; message: string }> => {
+    try {
+      const res = await api.resetPassword(userId);
+      if (res.success) {
+        setUsers((prev) =>
+          prev.map((u) => (u.id === userId ? { ...u, mustChangePassword: true } : u))
+        );
+        addAuditLog("Reset Password", `Admin mereset password pengguna ID: ${userId} ke 'smtslogin'`);
+        showToast("success", "Password Direset", "Kata sandi akun telah direset ke 'smtslogin'.");
+        return { success: true, message: res.message };
+      } else {
+        showToast("error", "Gagal Reset", res.message);
+        return { success: false, message: res.message };
+      }
+    } catch (err: any) {
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, mustChangePassword: true } : u))
+      );
+      showToast("success", "Password Direset", "Kata sandi berhasil direset ke 'smtslogin'.");
+      return { success: true, message: "Kata sandi berhasil direset ke 'smtslogin'." };
+    }
+  };
+
+  const regenerateUserQRToken = async (userId: string): Promise<string> => {
     const user = users.find((u) => u.id === userId);
-    const roleType = user?.role === "siswa" ? "STD" : user?.role === "guru" ? "TCH" : "ADM";
-    const newToken = generateSecureQRToken(roleType);
+    const roleType = user?.role === "siswa" ? "STD" : user?.role === "guru" ? "TCH" : user?.role === "admin" ? "ADM" : "USER";
+    let newToken = generateSecureQRToken(roleType);
     const now = new Date().toISOString();
+
+    try {
+      const res = await api.regenerateQR(userId);
+      if (res.success && res.qrToken) {
+        newToken = res.qrToken;
+      }
+    } catch (e) {
+      console.warn("Could not regenerate QR on server, using local token:", e);
+    }
 
     setUsers((prev) =>
       prev.map((u) => (u.id === userId ? { ...u, qrToken: newToken, qrGeneratedAt: now } : u))
@@ -1913,6 +1997,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addUser,
         updateUser,
         deleteUser,
+        resetUserPassword,
+        fetchUsers,
         classes,
         addClass,
         updateClass,
