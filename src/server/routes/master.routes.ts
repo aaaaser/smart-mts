@@ -1,7 +1,107 @@
 import { Router, Request, Response } from "express";
 import { prisma, checkDatabaseConnection } from "../../lib/prisma";
+import { AccountService } from "../services/account.service";
 
 export const masterRouter = Router();
+
+// ==================== TEACHERS / GURU ====================
+masterRouter.get("/teachers", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const dbStatus = await checkDatabaseConnection();
+    if (!dbStatus.connected) {
+      res.status(503).json({ success: false, message: "Database offline" });
+      return;
+    }
+
+    const teachers = await prisma.teacher.findMany({
+      include: {
+        user: {
+          include: {
+            qrCodes: { where: { isActive: true }, take: 1 },
+          },
+        },
+        teacherSubjects: {
+          include: { subject: true },
+        },
+        teacherAssignments: {
+          include: { assignmentType: true, class: true },
+        },
+      },
+      orderBy: { fullName: "asc" },
+    });
+
+    const transformed = teachers.map((t) => {
+      const activeQr = t.user?.qrCodes?.[0];
+      return {
+        id: t.userId, // Matches User ID for app context compatibility
+        teacherId: t.id,
+        userId: t.userId,
+        name: t.fullName,
+        username: t.user.username,
+        email: t.email || t.user.email,
+        nip: t.nip,
+        nipOrNis: t.nip || undefined,
+        nuptk: t.nuptk || undefined,
+        nik: t.nik || undefined,
+        phone: t.phone || undefined,
+        gender: t.gender,
+        address: t.address || undefined,
+        role: "guru" as const,
+        subjectIds: t.teacherSubjects.map((ts) => ts.subjectId),
+        subjectNames: t.teacherSubjects.map((ts) => ts.subject.name),
+        employmentStatus: t.employmentStatus,
+        qrToken: activeQr?.qrToken || "SMTS-UNASSIGNED",
+        qrIsActive: activeQr?.isActive ?? true,
+        isActive: t.user.isActive,
+        createdAt: t.createdAt.toISOString(),
+      };
+    });
+
+    res.json({ success: true, data: transformed });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error?.message });
+  }
+});
+
+masterRouter.post("/teachers", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { name, nip, nuptk, nik, gender, phone, email, username, address, subjectIds, employmentStatus } = req.body;
+    if (!name || !nip) {
+      res.status(400).json({ success: false, message: "Nama dan NIP Guru wajib diisi." });
+      return;
+    }
+
+    const result = await AccountService.createTeacherAccount({
+      name,
+      nip,
+      nuptk,
+      nik,
+      gender,
+      phone,
+      email,
+      username,
+      address,
+      subjectIds,
+      employmentStatus,
+      ipOrDevice: req.ip || "127.0.0.1",
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `Guru ${name} berhasil disimpan ke PostgreSQL dengan NIP ${nip}, password default 'smtslogin', dan QR ${result.qrCode.qrToken}`,
+      teacher: result.teacher,
+      user: {
+        id: result.user.id,
+        username: result.user.username,
+        email: result.user.email,
+        role: "guru",
+      },
+      qrCode: result.qrCode,
+    });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error?.message || "Gagal membuat data Guru di database." });
+  }
+});
 
 // ==================== CLASSES ====================
 masterRouter.get("/classes", async (req: Request, res: Response): Promise<void> => {

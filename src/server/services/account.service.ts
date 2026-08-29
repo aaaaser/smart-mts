@@ -107,11 +107,15 @@ export class AccountService {
     }
     const cleanNip = rawNip;
 
+    console.log("CREATE TEACHER START");
+    console.log(`input nip = ${cleanNip}`);
+
     // Check duplicate NIP in Teacher
     const existingTeacher = await prisma.teacher.findFirst({
       where: { nip: { equals: cleanNip, mode: "insensitive" } },
     });
     if (existingTeacher) {
+      console.error(`CREATE TEACHER FAILED: NIP ${cleanNip} already registered in Teacher table`);
       throw new Error(`NIP ${cleanNip} sudah terdaftar pada guru lain.`);
     }
 
@@ -125,6 +129,7 @@ export class AccountService {
       },
     });
     if (existingUser) {
+      console.error(`CREATE TEACHER FAILED: Username ${cleanUsername} or Email ${cleanEmail} already exists in User table`);
       throw new Error(`Username '${cleanUsername}' atau Email '${cleanEmail}' sudah digunakan di database.`);
     }
 
@@ -133,6 +138,7 @@ export class AccountService {
 
     const result = await prisma.$transaction(async (tx) => {
       // 1. Create User
+      console.log("creating user");
       const user = await tx.user.create({
         data: {
           username: cleanUsername,
@@ -143,17 +149,10 @@ export class AccountService {
           mustChangePassword: true,
         },
       });
+      console.log(`user created id = ${user.id}`);
 
-      // 2. Create UserQrCode
-      const qrCode = await tx.userQrCode.create({
-        data: {
-          userId: user.id,
-          qrToken,
-          isActive: true,
-        },
-      });
-
-      // 3. Create Teacher Profile
+      // 2. Create Teacher Profile
+      console.log("creating teacher");
       const teacher = await tx.teacher.create({
         data: {
           userId: user.id,
@@ -168,6 +167,19 @@ export class AccountService {
           employmentStatus: input.employmentStatus || EmploymentStatus.GTY,
         },
       });
+      console.log(`teacher created id = ${teacher.id}`);
+      console.log(`teacher.userId = ${teacher.userId}`);
+
+      // 3. Create UserQrCode
+      console.log("creating qr");
+      const qrCode = await tx.userQrCode.create({
+        data: {
+          userId: user.id,
+          qrToken,
+          isActive: true,
+        },
+      });
+      console.log(`qr created id = ${qrCode.id}`);
 
       // 4. Link Subjects if specified
       if (input.subjectIds && Array.isArray(input.subjectIds) && input.subjectIds.length > 0) {
@@ -199,7 +211,7 @@ export class AccountService {
       return { user, teacher, qrCode };
     });
 
-    // Server-side audit logging without password
+    console.log("CREATE TEACHER SUCCESS");
     console.log(
       `[CREATE_ACCOUNT] role=TEACHER identifier=${cleanNip} userId=${result.user.id} teacherId=${result.teacher.id} isActive=true hasPasswordHash=true hasQrCode=true`
     );

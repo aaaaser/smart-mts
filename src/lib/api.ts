@@ -204,6 +204,21 @@ export const api = {
     }
   },
 
+  async getTeachers(): Promise<User[]> {
+    try {
+      const res = await fetch("/api/master/teachers");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        return json.data;
+      }
+      return [];
+    } catch (e) {
+      console.warn("Could not fetch teachers from API:", e);
+      return [];
+    }
+  },
+
   async createUser(userData: any): Promise<{ success: boolean; message: string; data?: any }> {
     try {
       const res = await fetch("/api/users", {
@@ -212,15 +227,50 @@ export const api = {
         body: JSON.stringify(userData),
       });
       const json = await res.json();
+      if (!res.ok || json.success === false) {
+        return {
+          success: false,
+          message: json.message || `Gagal membuat pengguna di database (HTTP ${res.status})`,
+        };
+      }
       return {
-        success: json.success ?? res.ok,
-        message: json.message || (res.ok ? "Pengguna berhasil dibuat" : "Gagal membuat pengguna"),
+        success: true,
+        message: json.message || "Pengguna berhasil disimpan ke database.",
         data: json.data,
       };
     } catch (e: any) {
       return {
         success: false,
-        message: e?.message || "Terjadi kesalahan saat membuat pengguna.",
+        message: e?.message || "Terjadi kesalahan jaringan saat menyimpan data ke database.",
+      };
+    }
+  },
+
+  async createTeacher(teacherData: any): Promise<{ success: boolean; message: string; teacher?: any; user?: any; qrCode?: any }> {
+    try {
+      const res = await fetch("/api/master/teachers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(teacherData),
+      });
+      const json = await res.json();
+      if (!res.ok || json.success === false) {
+        return {
+          success: false,
+          message: json.message || `Gagal membuat Guru di database (HTTP ${res.status})`,
+        };
+      }
+      return {
+        success: true,
+        message: json.message || "Guru berhasil disimpan ke database.",
+        teacher: json.teacher,
+        user: json.user,
+        qrCode: json.qrCode,
+      };
+    } catch (e: any) {
+      return {
+        success: false,
+        message: e?.message || "Terjadi kesalahan jaringan saat menyimpan data guru.",
       };
     }
   },

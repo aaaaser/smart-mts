@@ -638,20 +638,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const fetchUsers = useCallback(async () => {
     try {
       const serverUsers = await api.getUsers();
-      if (serverUsers && serverUsers.length > 0) {
-        setUsers((prev) => {
-          const serverUserMap = new Map(serverUsers.map((u) => [u.id, u]));
-          const merged = [...serverUsers];
-          for (const localU of prev) {
-            if (!serverUserMap.has(localU.id) && !serverUsers.some((su) => su.username === localU.username)) {
-              merged.push(localU);
-            }
-          }
-          return merged;
-        });
+      if (serverUsers && Array.isArray(serverUsers) && serverUsers.length > 0) {
+        setUsers(serverUsers);
       }
     } catch (e) {
-      console.warn("Could not sync users from server:", e);
+      console.warn("Could not sync users from PostgreSQL server:", e);
     }
   }, []);
 
@@ -666,37 +657,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
 
       if (res.success) {
-        const newUser: User = {
-          id: res.data?.id || `usr_${Date.now()}`,
-          ...userData,
-          qrToken: res.data?.qrToken || localQrToken,
-          qrGeneratedAt: new Date().toISOString(),
-          qrIsActive: true,
-          mustChangePassword: true,
-          avatar: userData.avatar || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80`,
-        };
-        setUsers((prev) => [newUser, ...prev]);
-        addAuditLog("Tambah Pengguna", `Menambahkan akun baru: ${newUser.name} (${newUser.role}) dengan password awal 'smtslogin' and QR ${newUser.qrToken}`);
-        showToast("success", "Pengguna Ditambahkan", `${newUser.name} berhasil didaftarkan ke database.`);
-        return { success: true, message: res.message || `${newUser.name} berhasil didaftarkan.` };
+        // Immediately fetch the fresh dataset directly from PostgreSQL
+        await fetchUsers();
+        addAuditLog(
+          "Tambah Pengguna",
+          `Menambahkan akun baru: ${userData.name} (${userData.role}) dengan password awal 'smtslogin'`
+        );
+        showToast("success", "Pengguna Tersimpan", res.message || `${userData.name} berhasil disimpan ke PostgreSQL.`);
+        return { success: true, message: res.message || `${userData.name} berhasil didaftarkan.` };
       } else {
-        showToast("error", "Gagal Menambahkan", res.message);
-        return { success: false, message: res.message };
+        showToast("error", "Gagal Menyimpan Pengguna", res.message || "Gagal menyimpan ke database.");
+        return { success: false, message: res.message || "Gagal menyimpan ke database." };
       }
     } catch (e: any) {
-      const newUser: User = {
-        id: `usr_${Date.now()}`,
-        ...userData,
-        qrToken: localQrToken,
-        qrGeneratedAt: new Date().toISOString(),
-        qrIsActive: true,
-        mustChangePassword: true,
-        avatar: userData.avatar || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80`,
-      };
-      setUsers((prev) => [newUser, ...prev]);
-      addAuditLog("Tambah Pengguna", `Menambahkan akun baru: ${newUser.name} (${newUser.role})`);
-      showToast("success", "Pengguna Ditambahkan", `${newUser.name} berhasil didaftarkan.`);
-      return { success: true, message: `${newUser.name} berhasil didaftarkan.` };
+      const errorMsg = e?.message || "Terjadi kesalahan jaringan/server saat menyimpan akun ke database.";
+      console.error("[addUser] Error:", e);
+      showToast("error", "Gagal Menambahkan Pengguna", errorMsg);
+      return { success: false, message: errorMsg };
     }
   };
 
