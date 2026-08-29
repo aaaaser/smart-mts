@@ -1,8 +1,8 @@
 import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
-import { Role } from "@prisma/client";
+import { Role, Prisma } from "@prisma/client";
 import { prisma, checkDatabaseConnection } from "../../lib/prisma";
-import { normalizePhoneNumber } from "./users.routes";
+import { normalizePhoneNumber } from "../services/account.service";
 
 export const authRouter = Router();
 
@@ -83,79 +83,142 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
 
     let user: any = null;
 
-    // 1. GURU: Primary lookup by Teacher.nip (case-insensitive string) -> User
+    // 1. GURU: Primary lookup by Teacher.nip -> linked User
     if (mappedRole.roleEnum === Role.TEACHER) {
-      user = await prisma.user.findFirst({
+      const teacher = await prisma.teacher.findFirst({
         where: {
-          role: Role.TEACHER,
-          OR: [
-            { teacher: { nip: { equals: loginIdentifier, mode: "insensitive" } } },
-            { username: { equals: loginIdentifier, mode: "insensitive" } },
-            { email: { equals: loginIdentifier, mode: "insensitive" } },
-          ],
+          nip: { equals: loginIdentifier, mode: "insensitive" },
         },
         include: {
-          teacher: {
-            include: {
-              teacherSubjects: { include: { subject: true } },
-              teacherAssignments: { include: { assignmentType: true, class: true } },
-            },
+          user: {
+            include: { qrCodes: { where: { isActive: true }, take: 1 } },
           },
-          qrCodes: { where: { isActive: true }, take: 1 },
+          teacherSubjects: { include: { subject: true } },
+          teacherAssignments: { include: { assignmentType: true, class: true } },
         },
       });
-    }
-    // 2. SISWA: Primary lookup by Student.nis (case-insensitive string) -> User
-    else if (mappedRole.roleEnum === Role.STUDENT) {
-      user = await prisma.user.findFirst({
-        where: {
-          role: Role.STUDENT,
-          OR: [
-            { student: { nis: { equals: loginIdentifier, mode: "insensitive" } } },
-            { username: { equals: loginIdentifier, mode: "insensitive" } },
-            { email: { equals: loginIdentifier, mode: "insensitive" } },
-          ],
-        },
-        include: {
-          student: {
-            include: {
-              classMemberships: {
-                where: { status: "ACTIVE" },
-                include: { class: true },
+
+      if (teacher && teacher.user) {
+        user = {
+          ...teacher.user,
+          teacher,
+        };
+      } else {
+        // Fallback: search User table by username or email
+        user = await prisma.user.findFirst({
+          where: {
+            role: Role.TEACHER,
+            OR: [
+              { username: { equals: loginIdentifier, mode: "insensitive" } },
+              { email: { equals: loginIdentifier, mode: "insensitive" } },
+            ],
+          },
+          include: {
+            teacher: {
+              include: {
+                teacherSubjects: { include: { subject: true } },
+                teacherAssignments: { include: { assignmentType: true, class: true } },
               },
             },
+            qrCodes: { where: { isActive: true }, take: 1 },
           },
-          qrCodes: { where: { isActive: true }, take: 1 },
-        },
-      });
-    }
-    // 3. ORANG TUA / WALI: Primary lookup by Parent.phone (normalized string) -> User
-    else if (mappedRole.roleEnum === Role.PARENT) {
-      const normalizedPhone = normalizePhoneNumber(loginIdentifier);
-      const orConditions: any[] = [
-        { parent: { phone: { equals: loginIdentifier } } },
-        { username: { equals: loginIdentifier, mode: "insensitive" } },
-        { email: { equals: loginIdentifier, mode: "insensitive" } },
-      ];
-      if (normalizedPhone) {
-        orConditions.push({ parent: { phone: { equals: normalizedPhone } } });
-        orConditions.push({ username: { equals: normalizedPhone, mode: "insensitive" } });
+        });
       }
-
-      user = await prisma.user.findFirst({
+    }
+    // 2. SISWA: Primary lookup by Student.nis -> linked User
+    else if (mappedRole.roleEnum === Role.STUDENT) {
+      const student = await prisma.student.findFirst({
         where: {
-          role: Role.PARENT,
-          OR: orConditions,
+          nis: { equals: loginIdentifier, mode: "insensitive" },
         },
         include: {
-          parent: {
-            include: {
-              parentStudents: { include: { student: true } },
-            },
+          user: {
+            include: { qrCodes: { where: { isActive: true }, take: 1 } },
           },
-          qrCodes: { where: { isActive: true }, take: 1 },
+          classMemberships: {
+            where: { status: "ACTIVE" },
+            include: { class: true },
+          },
         },
       });
+
+      if (student && student.user) {
+        user = {
+          ...student.user,
+          student,
+        };
+      } else {
+        // Fallback: search User table by username or email
+        user = await prisma.user.findFirst({
+          where: {
+            role: Role.STUDENT,
+            OR: [
+              { username: { equals: loginIdentifier, mode: "insensitive" } },
+              { email: { equals: loginIdentifier, mode: "insensitive" } },
+            ],
+          },
+          include: {
+            student: {
+              include: {
+                classMemberships: {
+                  where: { status: "ACTIVE" },
+                  include: { class: true },
+                },
+              },
+            },
+            qrCodes: { where: { isActive: true }, take: 1 },
+          },
+        });
+      }
+    }
+    // 3. ORANG TUA / WALI: Primary lookup by Parent.phone (normalized) -> linked User
+    else if (mappedRole.roleEnum === Role.PARENT) {
+      const normalizedPhone = normalizePhoneNumber(loginIdentifier);
+      const parent = await prisma.parent.findFirst({
+        where: {
+          OR: [
+            { phone: loginIdentifier },
+            ...(normalizedPhone ? [{ phone: normalizedPhone }] : []),
+          ],
+        },
+        include: {
+          user: {
+            include: { qrCodes: { where: { isActive: true }, take: 1 } },
+          },
+          parentStudents: { include: { student: true } },
+        },
+      });
+
+      if (parent && parent.user) {
+        user = {
+          ...parent.user,
+          parent,
+        };
+      } else {
+        // Fallback: search User table by username or email
+        const parentOrConditions: Prisma.UserWhereInput[] = [
+          { username: { equals: loginIdentifier, mode: "insensitive" } },
+          { email: { equals: loginIdentifier, mode: "insensitive" } },
+        ];
+        if (normalizedPhone) {
+          parentOrConditions.push({ username: { equals: normalizedPhone, mode: "insensitive" } });
+        }
+
+        user = await prisma.user.findFirst({
+          where: {
+            role: Role.PARENT,
+            OR: parentOrConditions,
+          },
+          include: {
+            parent: {
+              include: {
+                parentStudents: { include: { student: true } },
+              },
+            },
+            qrCodes: { where: { isActive: true }, take: 1 },
+          },
+        });
+      }
     }
     // 4. ADMIN: Primary lookup by username or email
     else {
@@ -195,8 +258,6 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    console.log("[AUTH_ROLE_VALID]", { userId: user.id, role: user.role });
-
     // Step C: Account active verification
     if (!user.isActive) {
       console.log("[AUTH_FAILURE]", { userId: user.id, reason: "ACCOUNT_INACTIVE" });
@@ -216,10 +277,9 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
       isMatch = false;
     }
 
-    // Emergency plaintext fallback ONLY IF legacy unhashed password exists in database
+    // Plaintext fallback ONLY IF legacy unhashed password exists in database (auto-upgrades)
     if (!isMatch && user.passwordHash === password) {
       isMatch = true;
-      // Auto-migrate to bcrypt hash
       try {
         const upgradedHash = await bcrypt.hash(password, 10);
         await prisma.user.update({
@@ -275,6 +335,7 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
       role: user.role === Role.ADMIN ? "admin" : user.role === Role.TEACHER ? "guru" : user.role === Role.STUDENT ? "siswa" : "orangtua",
       name: user.teacher?.fullName || user.student?.fullName || user.parent?.fullName || user.username,
       nip: user.teacher?.nip || undefined,
+      nipOrNis: user.teacher?.nip || user.student?.nis || undefined,
       nis: user.student?.nis || undefined,
       nisn: user.student?.nisn || undefined,
       classId: user.student?.classMemberships?.[0]?.classId || undefined,
@@ -283,8 +344,9 @@ authRouter.post("/login", async (req: Request, res: Response): Promise<void> => 
       qrIsActive: activeQr?.isActive ?? true,
       teacherId: user.teacher?.id,
       studentId: user.student?.id,
+      parentId: user.parent?.id,
       phone: user.teacher?.phone || user.parent?.phone || undefined,
-      address: user.teacher?.address || user.student?.address || undefined,
+      address: user.teacher?.address || user.student?.address || user.parent?.address || undefined,
       mustChangePassword: user.mustChangePassword ?? false,
     };
 

@@ -225,6 +225,44 @@ export const api = {
     }
   },
 
+  async updateUser(userId: string, data: any): Promise<{ success: boolean; message: string }> {
+    try {
+      const res = await fetch(`/api/users/${userId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const json = await res.json();
+      return {
+        success: json.success ?? res.ok,
+        message: json.message || (res.ok ? "Data pengguna berhasil diperbarui" : "Gagal memperbarui pengguna"),
+      };
+    } catch (e: any) {
+      return {
+        success: false,
+        message: e?.message || "Terjadi kesalahan saat memperbarui pengguna.",
+      };
+    }
+  },
+
+  async deleteUser(userId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const res = await fetch(`/api/users/${userId}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      return {
+        success: json.success ?? res.ok,
+        message: json.message || (res.ok ? "Pengguna berhasil dinonaktifkan" : "Gagal menonaktifkan pengguna"),
+      };
+    } catch (e: any) {
+      return {
+        success: false,
+        message: e?.message || "Terjadi kesalahan saat menghapus pengguna.",
+      };
+    }
+  },
+
   async resetPassword(userId: string): Promise<{ success: boolean; message: string }> {
     try {
       const res = await fetch(`/api/users/${userId}/reset-password`, {

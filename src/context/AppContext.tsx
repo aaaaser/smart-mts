@@ -751,18 +751,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newToken;
   };
 
-  const updateUser = (id: string, updated: Partial<User>) => {
+  const updateUser = async (id: string, updated: Partial<User>) => {
     setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...updated } : u)));
     if (currentUser?.id === id) {
       setCurrentUser((prev) => (prev ? { ...prev, ...updated } : null));
+    }
+    try {
+      await api.updateUser(id, updated);
+    } catch (e) {
+      console.warn("Could not sync updateUser to server:", e);
     }
     addAuditLog("Edit Pengguna", `Memperbarui data akun ID: ${id}`);
     showToast("success", "Pengguna Diperbarui", "Perubahan data pengguna berhasil disimpan.");
   };
 
-  const deleteUser = (id: string) => {
+  const deleteUser = async (id: string) => {
     const target = users.find((u) => u.id === id);
     setUsers((prev) => prev.filter((u) => u.id !== id));
+    try {
+      await api.deleteUser(id);
+    } catch (e) {
+      console.warn("Could not sync deleteUser to server:", e);
+    }
     addAuditLog("Hapus Pengguna", `Menghapus akun: ${target?.name || id}`);
     showToast("info", "Pengguna Dihapus", "Akun berhasil dihapus dari sistem.");
   };
