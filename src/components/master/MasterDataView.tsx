@@ -14,9 +14,18 @@ import {
   GraduationCap,
   Plus,
   Check,
+  QrCode,
+  Printer,
+  RefreshCw,
+  Eye,
+  ShieldCheck,
+  KeyRound,
+  Sparkles,
 } from "lucide-react";
 import { Modal } from "../common/Modal";
 import { exportUsersToExcel } from "../../lib/excelExport";
+import { MyQRCard } from "../attendance/MyQRCard";
+import { BatchQRPrintModal } from "../attendance/BatchQRPrintModal";
 
 export const MasterDataView: React.FC = () => {
   const {
@@ -24,6 +33,7 @@ export const MasterDataView: React.FC = () => {
     addUser,
     updateUser,
     deleteUser,
+    regenerateUserQRToken,
     classes,
     addClass,
     updateClass,
@@ -37,11 +47,18 @@ export const MasterDataView: React.FC = () => {
     updateSchedule,
     deleteSchedule,
     schoolProfile,
+    showToast,
   } = useApp();
 
   const [activeSubTab, setActiveSubTab] = useState<"guru" | "siswa" | "orangtua" | "kelas" | "mapel" | "jadwal">("guru");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedClassFilter, setSelectedClassFilter] = useState("all");
+
+  // QR Modal States
+  const [selectedQRUser, setSelectedQRUser] = useState<User | null>(null);
+  const [isQRModalOpen, setIsQRModalOpen] = useState(false);
+  const [isBatchPrintOpen, setIsBatchPrintOpen] = useState(false);
+  const [regeneratingUserId, setRegeneratingUserId] = useState<string | null>(null);
 
   // Modal State
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
@@ -144,6 +161,29 @@ export const MasterDataView: React.FC = () => {
       subjectIds: u.subjectIds || [],
     });
     setIsUserModalOpen(true);
+  };
+
+  const handleViewQR = (u: User) => {
+    setSelectedQRUser(u);
+    setIsQRModalOpen(true);
+  };
+
+  const handleRegenerateQR = async (u: User) => {
+    if (
+      window.confirm(
+        `Apakah Anda yakin ingin membuat ulang QR Code untuk ${u.name}? QR Code lama akan dinonaktifkan di PostgreSQL dan token baru akan dibuat.`
+      )
+    ) {
+      setRegeneratingUserId(u.id);
+      try {
+        const newToken = regenerateUserQRToken(u.id);
+        showToast("success", "QR Code Diregenerasi", `QR Code untuk ${u.name} berhasil diperbarui: ${newToken}`);
+      } catch (err: any) {
+        showToast("error", "Gagal Regenerasi QR", err?.message || "Terjadi kesalahan.");
+      } finally {
+        setRegeneratingUserId(null);
+      }
+    }
   };
 
   const handleSaveUser = (e: React.FormEvent) => {
@@ -295,6 +335,15 @@ export const MasterDataView: React.FC = () => {
               </button>
 
               <button
+                onClick={() => setIsBatchPrintOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200/80 shadow-2xs transition-colors cursor-pointer"
+                title="Cetak Masal Kartu ID & QR Code"
+              >
+                <Printer className="w-4 h-4 text-emerald-700" />
+                <span>Cetak Masal QR</span>
+              </button>
+
+              <button
                 onClick={() => openAddUser(activeSubTab as User["role"])}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm shadow-emerald-600/20 transition-all cursor-pointer"
               >
@@ -405,7 +454,7 @@ export const MasterDataView: React.FC = () => {
             )}
           </div>
 
-          {/* Table */}
+            {/* Table */}
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs text-slate-600">
               <thead className="bg-slate-50/80 border-b border-slate-200/80 text-slate-700 font-bold uppercase tracking-wider text-[10px]">
@@ -419,6 +468,7 @@ export const MasterDataView: React.FC = () => {
                       ? "Kelas / Rombel"
                       : "Nama Siswa Terhubung"}
                   </th>
+                  <th className="px-5 py-3">QR Code Presensi</th>
                   <th className="px-5 py-3">Kontak</th>
                   <th className="px-5 py-3 text-right">Aksi</th>
                 </tr>
@@ -426,7 +476,7 @@ export const MasterDataView: React.FC = () => {
               <tbody className="divide-y divide-slate-100 font-medium">
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-5 py-8 text-center text-slate-400">
+                    <td colSpan={6} className="px-5 py-8 text-center text-slate-400">
                       Tidak ada data yang cocok dengan kriteria pencarian.
                     </td>
                   </tr>
@@ -481,8 +531,46 @@ export const MasterDataView: React.FC = () => {
                             </div>
                           )}
                         </td>
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleViewQR(u)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/60 font-mono text-[11px] font-bold transition-all shadow-2xs cursor-pointer group"
+                              title="Klik untuk melihat dan mencetak Kartu QR"
+                            >
+                              <QrCode className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform" />
+                              <span className="truncate max-w-[110px]">{u.qrToken || "SMTS-UNASSIGNED"}</span>
+                            </button>
+                            <span
+                              className={`w-2 h-2 rounded-full ${
+                                u.qrIsActive !== false ? "bg-emerald-500" : "bg-rose-400"
+                              }`}
+                              title={u.qrIsActive !== false ? "QR Aktif di DB" : "QR Nonaktif"}
+                            />
+                          </div>
+                        </td>
                         <td className="px-5 py-3.5 text-slate-500">{u.phone || "-"}</td>
                         <td className="px-5 py-3.5 text-right space-x-1">
+                          <button
+                            onClick={() => handleViewQR(u)}
+                            className="p-1.5 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                            title="Lihat & Cetak Kartu QR"
+                          >
+                            <QrCode className="w-3.5 h-3.5 text-emerald-600" />
+                          </button>
+                          <button
+                            onClick={() => handleRegenerateQR(u)}
+                            disabled={regeneratingUserId === u.id}
+                            className="p-1.5 text-slate-400 hover:text-teal-700 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer"
+                            title="Regenerasi QR Code Baru (Simpan ke DB)"
+                          >
+                            <RefreshCw
+                              className={`w-3.5 h-3.5 text-teal-600 ${
+                                regeneratingUserId === u.id ? "animate-spin" : ""
+                              }`}
+                            />
+                          </button>
                           <button
                             onClick={() => openEditUser(u)}
                             className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
@@ -764,6 +852,17 @@ export const MasterDataView: React.FC = () => {
             </div>
           )}
 
+          {/* Security & QR Auto-Creation Notice */}
+          <div className="p-3 rounded-xl bg-emerald-50/80 border border-emerald-200/80 flex items-start gap-2.5 text-xs text-emerald-900">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+            <div className="space-y-0.5 leading-relaxed">
+              <p className="font-bold text-emerald-950">Password Bawaan & QR Code Presensi</p>
+              <p className="text-[11px] text-emerald-800">
+                Password awal default: <code className="font-mono bg-emerald-100 px-1 py-0.5 rounded font-bold text-emerald-900">smtslogin</code>. Pengguna wajib mengganti password saat login pertama kali. Token QR unik dibuat otomatis dan disimpan di database PostgreSQL.
+              </p>
+            </div>
+          </div>
+
           <div className="pt-4 flex items-center justify-end gap-2 border-t border-slate-100">
             <button
               type="button"
@@ -1007,6 +1106,32 @@ export const MasterDataView: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* MODAL LIHAT & CETAK QR CARD PENGGUNA */}
+      <Modal
+        isOpen={isQRModalOpen}
+        onClose={() => {
+          setIsQRModalOpen(false);
+          setSelectedQRUser(null);
+        }}
+        title={`Kartu Identitas & QR Code - ${selectedQRUser?.name || "Pengguna"}`}
+        subtitle="Token presensi QR tersimpan di database PostgreSQL"
+        maxWidth="max-w-xl"
+      >
+        {selectedQRUser ? (
+          <div className="py-2">
+            <MyQRCard targetUser={selectedQRUser} />
+          </div>
+        ) : (
+          <div className="p-6 text-center text-slate-400">Pengguna tidak ditemukan.</div>
+        )}
+      </Modal>
+
+      {/* MODAL CETAK MASAL QR */}
+      <BatchQRPrintModal
+        isOpen={isBatchPrintOpen}
+        onClose={() => setIsBatchPrintOpen(false)}
+      />
     </div>
   );
 };

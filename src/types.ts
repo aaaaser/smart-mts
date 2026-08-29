@@ -30,6 +30,7 @@ export interface User {
   qrToken: string; // e.g. "SMTS-USER-8F4A92-XXXX"
   qrGeneratedAt?: string;
   qrIsActive?: boolean;
+  mustChangePassword?: boolean;
 }
 
 

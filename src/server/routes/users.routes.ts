@@ -44,7 +44,10 @@ usersRouter.get("/", async (req: Request, res: Response): Promise<void> => {
             parentStudents: { include: { student: true } },
           },
         },
-        qrCode: true,
+        qrCodes: {
+          where: { isActive: true },
+          take: 1,
+        },
       },
       orderBy: { createdAt: "desc" },
     });
@@ -53,6 +56,7 @@ usersRouter.get("/", async (req: Request, res: Response): Promise<void> => {
       const isTeacher = u.role === "TEACHER" && u.teacher;
       const isStudent = u.role === "STUDENT" && u.student;
       const isParent = u.role === "PARENT" && u.parent;
+      const activeQr = u.qrCodes?.[0];
 
       return {
         id: u.id,
@@ -76,8 +80,10 @@ usersRouter.get("/", async (req: Request, res: Response): Promise<void> => {
         subjectIds: isTeacher ? u.teacher?.teacherSubjects.map((ts) => ts.subjectId) : undefined,
         teacherId: u.teacher?.id,
         studentId: u.student?.id,
-        qrToken: u.qrCode?.qrToken || "SMTS-UNASSIGNED",
-        qrIsActive: u.qrCode?.isActive ?? true,
+        childStudentId: isParent ? u.parent?.parentStudents[0]?.studentId : undefined,
+        qrToken: activeQr?.qrToken || "SMTS-UNASSIGNED",
+        qrIsActive: activeQr?.isActive ?? true,
+        mustChangePassword: u.mustChangePassword,
         isActive: u.isActive,
         createdAt: u.createdAt.toISOString(),
       };
@@ -89,13 +95,12 @@ usersRouter.get("/", async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-// POST Create User + (Teacher / Student) + UserQrCode in a SINGLE TRANSACTION
+// POST Create User + (Teacher / Student / Parent) + UserQrCode in a SINGLE TRANSACTION
 usersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
   try {
     const {
       username,
       email,
-      password,
       role, // "guru" | "siswa" | "admin" | "orangtua"
       name,
       nip,
@@ -109,10 +114,11 @@ usersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
       classId,
       academicYearId,
       subjectIds,
+      childStudentId,
     } = req.body;
 
     if (!username || !email || !name || !role) {
-      res.status(400).json({ success: false, message: "Username, email, nama, dan role wajib diisi." });
+      res.status(400).json({ success: false, message: "Username, email, nama, dan jenis pengguna wajib diisi." });
       return;
     }
 
@@ -134,8 +140,9 @@ usersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const defaultPass = password || (role === "guru" ? "guru123" : role === "siswa" ? "siswa123" : "admin123");
-    const passwordHash = await bcrypt.hash(defaultPass, 10);
+    // Default password 'smtslogin' hashed securely with bcrypt (10 rounds)
+    const defaultPassword = "smtslogin";
+    const passwordHash = await bcrypt.hash(defaultPassword, 10);
 
     const prismaRole: Role =
       role === "guru" || role === "TEACHER"
@@ -151,7 +158,7 @@ usersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
 
     // Run database transaction
     const newUser = await prisma.$transaction(async (tx) => {
-      // 1. Create User
+      // 1. Create User with mustChangePassword = true
       const user = await tx.user.create({
         data: {
           username: username.toLowerCase(),
@@ -159,10 +166,11 @@ usersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
           passwordHash,
           role: prismaRole,
           isActive: true,
+          mustChangePassword: true,
         },
       });
 
-      // 2. Create UserQrCode
+      // 2. Create UserQrCode linked to User in PostgreSQL
       await tx.userQrCode.create({
         data: {
           userId: user.id,
@@ -171,7 +179,7 @@ usersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
         },
       });
 
-      // 3. Create Teacher or Student Profile
+      // 3. Create Role Profile
       if (prismaRole === Role.TEACHER) {
         const teacher = await tx.teacher.create({
           data: {
@@ -227,6 +235,25 @@ usersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
             });
           }
         }
+      } else if (prismaRole === Role.PARENT) {
+        const parent = await tx.parent.create({
+          data: {
+            userId: user.id,
+            fullName: name,
+            phone: phone || null,
+            address: address || null,
+          },
+        });
+
+        if (childStudentId) {
+          await tx.parentStudent.create({
+            data: {
+              parentId: parent.id,
+              studentId: childStudentId,
+              relationship: "Orang Tua / Wali",
+            },
+          });
+        }
       }
 
       // 4. Audit Log
@@ -235,8 +262,8 @@ usersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
           userId: user.id,
           userName: name,
           userRole: prismaRole,
-          action: prismaRole === Role.TEACHER ? "CREATE_TEACHER" : "CREATE_STUDENT",
-          details: `Berhasil menambahkan akun ${name} (${username}) dengan QR Token otomatis ${secureQrToken}`,
+          action: prismaRole === Role.TEACHER ? "CREATE_TEACHER" : prismaRole === Role.STUDENT ? "CREATE_STUDENT" : "CREATE_USER",
+          details: `Menambahkan akun ${name} (${username}) dengan role ${prismaRole}, password awal default (smtslogin), dan QR Token ${secureQrToken}`,
           ipOrDevice: req.ip || "127.0.0.1",
         },
       });
@@ -246,8 +273,8 @@ usersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
 
     res.status(201).json({
       success: true,
-      message: `User ${name} berhasil dibuat dengan QR Token: ${secureQrToken}`,
-      data: { id: newUser.id, username: newUser.username, qrToken: secureQrToken },
+      message: `User ${name} berhasil dibuat dengan password awal 'smtslogin' dan QR Token ${secureQrToken}`,
+      data: { id: newUser.id, username: newUser.username, qrToken: secureQrToken, mustChangePassword: true },
     });
   } catch (error: any) {
     console.error("Create user transaction error:", error);
@@ -255,14 +282,14 @@ usersRouter.post("/", async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-// Regenerate QR Token
+// Regenerate QR Token (Invalidates old active token & creates new token in PostgreSQL)
 usersRouter.post("/:id/regenerate-qr", async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
 
     const user = await prisma.user.findUnique({
       where: { id },
-      include: { qrCode: true, teacher: true, student: true },
+      include: { qrCodes: true, teacher: true, student: true },
     });
 
     if (!user) {
@@ -274,30 +301,39 @@ usersRouter.post("/:id/regenerate-qr", async (req: Request, res: Response): Prom
     const newQrToken = generateSecureQRToken(prefix);
 
     await prisma.$transaction(async (tx) => {
-      if (user.qrCode) {
-        await tx.userQrCode.update({
-          where: { id: user.qrCode.id },
-          data: { qrToken: newQrToken, isActive: true },
-        });
-      } else {
-        await tx.userQrCode.create({
-          data: { userId: user.id, qrToken: newQrToken, isActive: true },
-        });
-      }
+      // 1. Deactivate all existing QR codes for this user
+      await tx.userQrCode.updateMany({
+        where: { userId: user.id },
+        data: { isActive: false },
+      });
 
+      // 2. Create new active QR code record
+      await tx.userQrCode.create({
+        data: {
+          userId: user.id,
+          qrToken: newQrToken,
+          isActive: true,
+        },
+      });
+
+      // 3. Audit Log
       await tx.auditLog.create({
         data: {
           userId: user.id,
           userName: user.teacher?.fullName || user.student?.fullName || user.username,
           userRole: user.role,
-          action: "REGENERATE_QR",
-          details: `Regenerasi QR Code berhasil. Token baru: ${newQrToken}`,
+          action: "QR_REGENERATED",
+          details: `Regenerasi QR Code berhasil untuk ${user.username}. QR Token baru: ${newQrToken} (QR lama dinonaktifkan)`,
           ipOrDevice: req.ip || "127.0.0.1",
         },
       });
     });
 
-    res.json({ success: true, qrToken: newQrToken, message: "QR Token berhasil diperbarui." });
+    res.json({
+      success: true,
+      qrToken: newQrToken,
+      message: "QR Code berhasil diregenerasi dan disimpan ke PostgreSQL. QR sebelumnya telah dinonaktifkan.",
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error?.message });
   }

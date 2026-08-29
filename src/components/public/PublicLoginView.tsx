@@ -40,7 +40,7 @@ const ROLE_OPTIONS: RoleOption[] = [
     description: "Administrator & Pengelola Sistem Madrasah",
     icon: ShieldCheck,
     demoUsername: "admin",
-    demoPassword: "admin123",
+    demoPassword: "smtslogin",
     color: "emerald",
   },
   {
@@ -49,8 +49,8 @@ const ROLE_OPTIONS: RoleOption[] = [
     roleType: "guru",
     description: "Dewan Guru, Pendidik & Wali Kelas",
     icon: BookOpen,
-    demoUsername: "siti.nurhaliza",
-    demoPassword: "guru123",
+    demoUsername: "198203152008012015",
+    demoPassword: "smtslogin",
     color: "teal",
   },
   {
@@ -59,8 +59,8 @@ const ROLE_OPTIONS: RoleOption[] = [
     roleType: "siswa",
     description: "Peserta Didik (Fase D MTs)",
     icon: GraduationCap,
-    demoUsername: "ahmad.fauzan",
-    demoPassword: "siswa123",
+    demoUsername: "2026001",
+    demoPassword: "smtslogin",
     color: "blue",
   },
   {
@@ -69,8 +69,8 @@ const ROLE_OPTIONS: RoleOption[] = [
     roleType: "orangtua",
     description: "Wali Murid & Monitoring Rapor Siswa",
     icon: HeartHandshake,
-    demoUsername: "budi.santoso",
-    demoPassword: "parent123",
+    demoUsername: "081234567890",
+    demoPassword: "smtslogin",
     color: "amber",
   },
 ];
@@ -262,13 +262,30 @@ export const PublicLoginView: React.FC = () => {
               )}
             </div>
 
-            {/* Username / Email */}
+            {/* Identifier (NIP / NIS / No. HP / Username) */}
             <div>
               <label
                 htmlFor="login-username"
-                className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5"
+                className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between"
               >
-                Username / Alamat Email
+                <span>
+                  {selectedRole === "guru"
+                    ? "NIP (Nomor Induk Pegawai)"
+                    : selectedRole === "siswa"
+                    ? "NIS (Nomor Induk Siswa)"
+                    : selectedRole === "orang_tua"
+                    ? "Nomor HP / Telepon Terdaftar"
+                    : "Username / Alamat Email"}
+                </span>
+                <span className="text-[10px] text-slate-400 font-normal lowercase">
+                  {selectedRole === "guru"
+                    ? "(atau Username/Email)"
+                    : selectedRole === "siswa"
+                    ? "(atau Username/Email)"
+                    : selectedRole === "orang_tua"
+                    ? "(format: 08xxx / +62xxx)"
+                    : ""}
+                </span>
               </label>
               <div className="relative">
                 <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -278,7 +295,15 @@ export const PublicLoginView: React.FC = () => {
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Masukkan username atau email akun"
+                  placeholder={
+                    selectedRole === "guru"
+                      ? "Masukkan NIP Guru (contoh: 198203152008012015)"
+                      : selectedRole === "siswa"
+                      ? "Masukkan NIS Siswa (contoh: 2026001)"
+                      : selectedRole === "orang_tua"
+                      ? "Masukkan nomor HP terdaftar (contoh: 081234567890)"
+                      : "Masukkan username atau email akun admin"
+                  }
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 />
               </div>

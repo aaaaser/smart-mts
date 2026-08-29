@@ -202,7 +202,7 @@ async function main() {
       passwordHash: passwordAdmin,
       role: Role.ADMIN,
       isActive: true,
-      qrCode: {
+      qrCodes: {
         create: {
           qrToken: "SMTS-ADM-001-ALPHA",
           isActive: true,
@@ -291,7 +291,7 @@ async function main() {
         passwordHash: passwordGuru,
         role: Role.TEACHER,
         isActive: true,
-        qrCode: {
+        qrCodes: {
           create: {
             qrToken: generateRandomToken("SMTS-TCH"),
             isActive: true,
@@ -313,7 +313,7 @@ async function main() {
       },
       include: {
         teacher: true,
-        qrCode: true,
+        qrCodes: true,
       },
     });
 
@@ -556,7 +556,7 @@ async function main() {
         passwordHash: passwordSiswa,
         role: Role.STUDENT,
         isActive: true,
-        qrCode: {
+        qrCodes: {
           create: {
             qrToken: `SMTS-STU-${s.nis}-${generateRandomToken("QR").split("-")[1]}`,
             isActive: true,
@@ -576,7 +576,7 @@ async function main() {
       },
       include: {
         student: true,
-        qrCode: true,
+        qrCodes: true,
       },
     });
 

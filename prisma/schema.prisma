@@ -165,21 +165,22 @@ enum BlogStatus {
 // --------------------------------------------------------
 
 model User {
-  id           String    @id @default(uuid())
-  username     String    @unique
-  email        String    @unique
-  passwordHash String
-  role         Role      @default(STUDENT)
-  isActive     Boolean   @default(true)
-  lastLoginAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id                 String    @id @default(uuid())
+  username           String    @unique
+  email              String    @unique
+  passwordHash       String
+  role               Role      @default(STUDENT)
+  isActive           Boolean   @default(true)
+  mustChangePassword Boolean   @default(true)
+  lastLoginAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   // 1-to-1 Profiles
   teacher      Teacher?
   student      Student?
   parent       Parent?
-  qrCode       UserQrCode?
+  qrCodes      UserQrCode[]
 
   // Relations
   createdAttendanceSessions AttendanceSession[] @relation("SessionCreator")
@@ -196,14 +197,16 @@ model User {
 
 model UserQrCode {
   id        String   @id @default(uuid())
-  userId    String   @unique
+  userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   qrToken   String   @unique
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([userId])
   @@index([qrToken])
+  @@index([isActive])
 }
 
 // --------------------------------------------------------
