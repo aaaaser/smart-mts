@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   Globe,
   Newspaper,
+  User,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -47,6 +48,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenAIAssis
   const adminMenu = {
     main: [
       { id: "dashboard", label: "Dashboard Utama", icon: <LayoutDashboard className="w-4 h-4" /> },
+      { id: "profile", label: "Profil Admin", icon: <User className="w-4 h-4" /> },
       { id: "master", label: "Data Master", icon: <Users className="w-4 h-4" /> },
       { id: "duties", label: "Penugasan Guru", icon: <Award className="w-4 h-4" />, badge: "SK" },
       { id: "blog_admin", label: "Manajemen Blog & Web", icon: <Newspaper className="w-4 h-4" />, badge: countPendingBlog > 0 ? `${countPendingBlog} Baru` : undefined },
@@ -69,9 +71,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenAIAssis
   const guruMenu = {
     main: [
       { id: "dashboard", label: "Dashboard Guru", icon: <LayoutDashboard className="w-4 h-4" /> },
-      { id: "blog_teacher", label: "Blog Saya", icon: <Newspaper className="w-4 h-4" /> },
-      { id: "attendance", label: "Presensi QR Terpadu", icon: <QrCode className="w-4 h-4" />, badge: "Scan" },
+      { id: "profile", label: "Profil Guru", icon: <User className="w-4 h-4" /> },
       { id: "schedules", label: "Jadwal Mengajar", icon: <Calendar className="w-4 h-4" /> },
+      { id: "attendance", label: "Presensi QR Terpadu", icon: <QrCode className="w-4 h-4" />, badge: "Scan" },
       ...(myDuties.length > 0
         ? [
             {
@@ -90,6 +92,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenAIAssis
       { id: "questions", label: "Bank Soal & AI", icon: <FileQuestion className="w-4 h-4" />, badge: "AI" },
       { id: "exams", label: "Ujian Online (CBT)", icon: <GraduationCap className="w-4 h-4" /> },
       { id: "assignments", label: "Tugas & Penilaian", icon: <ClipboardList className="w-4 h-4" /> },
+      { id: "blog_teacher", label: "Blog Saya", icon: <Newspaper className="w-4 h-4" /> },
     ],
     assessment: [
       { id: "assessment", label: "Rekap Nilai Siswa", icon: <Award className="w-4 h-4" /> },
@@ -97,15 +100,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenAIAssis
       { id: "reports", label: "Analisis Nilai", icon: <BarChart3 className="w-4 h-4" /> },
     ],
     system: [
-      { id: "settings", label: "Profil Guru", icon: <Settings className="w-4 h-4" /> },
+      { id: "settings", label: "Pengaturan Sistem", icon: <Settings className="w-4 h-4" /> },
     ],
   };
 
   const siswaMenu = {
     main: [
       { id: "dashboard", label: "Dashboard Siswa", icon: <LayoutDashboard className="w-4 h-4" /> },
-      { id: "attendance", label: "QR Code & Presensi", icon: <QrCode className="w-4 h-4" />, badge: "ID" },
+      { id: "profile", label: "Profil Saya", icon: <User className="w-4 h-4" /> },
       { id: "schedules", label: "Jadwal Pelajaran", icon: <Calendar className="w-4 h-4" /> },
+      { id: "attendance", label: "QR Code & Presensi", icon: <QrCode className="w-4 h-4" />, badge: "ID" },
       { id: "assignments", label: "Tugas Saya", icon: <ClipboardList className="w-4 h-4" /> },
       { id: "exams", label: "Ujian Online (CBT)", icon: <GraduationCap className="w-4 h-4" /> },
     ],
@@ -121,8 +125,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenAIAssis
   const orangtuaMenu = {
     main: [
       { id: "dashboard", label: "Dashboard Anak", icon: <LayoutDashboard className="w-4 h-4" /> },
+      { id: "profile", label: "Profil Wali", icon: <User className="w-4 h-4" /> },
       { id: "attendance", label: "Kehadiran & QR Anak", icon: <UserCheck className="w-4 h-4" /> },
       { id: "assignments", label: "Tugas Anak", icon: <ClipboardList className="w-4 h-4" /> },
+      { id: "exams", label: "Ujian CBT Anak", icon: <GraduationCap className="w-4 h-4" /> },
     ],
     assessment: [
       { id: "assessment", label: "Nilai & Perkembangan", icon: <Award className="w-4 h-4" /> },

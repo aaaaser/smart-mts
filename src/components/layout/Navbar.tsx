@@ -29,6 +29,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, onOpenAIAssista
 
   const tabLabels: Record<string, string> = {
     dashboard: "Dashboard Utama",
+    profile: "Profil Akun & Keamanan",
     master: "Data Master Sekolah",
     curriculum: "Kurikulum & CP/KD",
     attendance: "Presensi QR Code",
@@ -206,6 +207,15 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, onOpenAIAssista
                     <span>{currentUser.qrToken}</span>
                   </div>
                 )}
+                <button
+                  onClick={() => {
+                    setActiveTab("profile");
+                    setShowRoleMenu(false);
+                  }}
+                  className="mt-2 w-full py-1.5 px-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer text-center"
+                >
+                  Buka Profil & Keamanan Akun
+                </button>
               </div>
 
               {/* Fast Demo Role Switch */}

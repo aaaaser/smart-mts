@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useApp } from "../../context/AppContext";
 import {
   Users,
@@ -21,6 +21,9 @@ import {
   Printer,
   Bell,
   UserCheck,
+  KeyRound,
+  RotateCcw,
+  Loader2,
 } from "lucide-react";
 
 export const DashboardView: React.FC = () => {
@@ -37,11 +40,58 @@ export const DashboardView: React.FC = () => {
     studentGrades,
     schedules,
     setActiveTab,
+    showToast,
   } = useApp();
 
   const [activeChartFilter, setActiveChartFilter] = useState<"siswa" | "guru">("siswa");
+  const [resetRequests, setResetRequests] = useState<any[]>([]);
+  const [loadingReset, setLoadingReset] = useState(false);
+  const [processingUserId, setProcessingUserId] = useState<string | null>(null);
 
   const role = currentUser?.role || "admin";
+
+  useEffect(() => {
+    if (role === "admin") {
+      fetchResetRequests();
+    }
+  }, [role]);
+
+  const fetchResetRequests = async () => {
+    try {
+      setLoadingReset(true);
+      const res = await fetch("/api/auth/reset-requests");
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data)) {
+        setResetRequests(data.data);
+      }
+    } catch (e) {
+      console.error("Failed to load reset requests", e);
+    } finally {
+      setLoadingReset(false);
+    }
+  };
+
+  const handleProcessReset = async (userId: string, userName: string) => {
+    setProcessingUserId(userId);
+    try {
+      const res = await fetch("/api/auth/process-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, newPassword: "smtslogin" }),
+      });
+      const data = await res.json();
+      if (data.success || res.ok) {
+        showToast("success", "Reset Berhasil", `Kata sandi ${userName} telah direset ke 'smtslogin'.`);
+        fetchResetRequests();
+      } else {
+        showToast("error", "Gagal", data.message || "Gagal memproses reset.");
+      }
+    } catch (err: any) {
+      showToast("error", "Error", err?.message || "Gagal memproses reset.");
+    } finally {
+      setProcessingUserId(null);
+    }
+  };
 
   // Data aggregations
   const totalTeachers = users.filter((u) => u.role === "guru").length;
@@ -146,6 +196,74 @@ export const DashboardView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Admin Password Reset Requests Notification Card */}
+      {role === "admin" && resetRequests.length > 0 && (
+        <div className="bg-amber-50/90 border border-amber-200 rounded-3xl p-5 sm:p-6 shadow-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-amber-200/80 text-amber-900 flex items-center justify-center">
+                <KeyRound className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-extrabold text-amber-950">
+                  Permintaan Reset Kata Sandi ({resetRequests.length})
+                </h3>
+                <p className="text-xs text-amber-800/80">
+                  Pengguna berikut mengajukan permohonan pemulihan kata sandi akun madrasah.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={fetchResetRequests}
+              className="p-2 text-amber-800 hover:bg-amber-200/50 rounded-xl transition-colors cursor-pointer"
+              title="Segarkan data"
+            >
+              <RotateCcw className={`w-4 h-4 ${loadingReset ? "animate-spin" : ""}`} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+            {resetRequests.slice(0, 4).map((req) => (
+              <div
+                key={req.id}
+                className="p-3.5 rounded-2xl bg-white border border-amber-200 flex items-center justify-between gap-3 shadow-xs"
+              >
+                <div className="space-y-0.5 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-xs font-bold text-slate-900 truncate">
+                      {req.userName}
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-100 text-amber-900 border border-amber-200">
+                      {req.userRole}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 truncate">
+                    {req.details}
+                  </p>
+                  <p className="text-[10px] text-slate-400">
+                    {new Date(req.createdAt).toLocaleString("id-ID")}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={processingUserId === req.userId}
+                  onClick={() => handleProcessReset(req.userId, req.userName)}
+                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shrink-0 transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  {processingUserId === req.userId ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <KeyRound className="w-3.5 h-3.5" />
+                  )}
+                  <span>Reset ke smtslogin</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ======================================================== */}
       {/* SISWA SPECIFIC TOP OVERVIEW                             */}

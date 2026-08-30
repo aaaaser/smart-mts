@@ -30,7 +30,7 @@ import { PublicLoginView } from "./components/public/PublicLoginView";
 // Blog Dashboard Management Components
 import { TeacherBlogManagementView } from "./components/blog/TeacherBlogManagementView";
 import { AdminBlogManagementView } from "./components/blog/AdminBlogManagementView";
-import { ChangePasswordView } from "./components/auth/ChangePasswordView";
+import { UserProfileView } from "./components/profile/UserProfileView";
 
 const PublicLayout: React.FC = () => {
   const { publicRoute } = useApp();
@@ -88,15 +88,12 @@ const DashboardLayout: React.FC = () => {
     return null;
   }
 
-  // Mandatory password change check for initial login
-  if (currentUser.mustChangePassword) {
-    return <ChangePasswordView />;
-  }
-
   const renderDashboardContent = () => {
     switch (activeTab) {
       case "dashboard":
         return currentUser?.role === "siswa" ? <StudentDashboardView /> : <DashboardView />;
+      case "profile":
+        return <UserProfileView />;
       case "blog_admin":
         return <AdminBlogManagementView />;
       case "blog_teacher":

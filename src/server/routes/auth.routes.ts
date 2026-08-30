@@ -432,7 +432,7 @@ authRouter.post("/change-password", async (req: Request, res: Response): Promise
     if (!isOldMatch) {
       res.status(400).json({
         success: false,
-        message: "Kata sandi lama yang Anda masukkan tidak sesuai.",
+        message: "Password saat ini salah.",
       });
       return;
     }
@@ -456,7 +456,7 @@ authRouter.post("/change-password", async (req: Request, res: Response): Promise
           userName: user.teacher?.fullName || user.student?.fullName || user.parent?.fullName || user.username,
           userRole: user.role,
           action: "CHANGE_PASSWORD",
-          details: `User ${user.username} (${user.role}) berhasil memperbarui kata sandi akun dan menyelesaikan aktivasi login.`,
+          details: `User ${user.username} (${user.role}) berhasil memperbarui kata sandi akun melalui menu Profil.`,
           ipOrDevice: req.ip || "127.0.0.1",
         },
       });
@@ -466,10 +466,216 @@ authRouter.post("/change-password", async (req: Request, res: Response): Promise
 
     res.json({
       success: true,
-      message: "Kata sandi berhasil diperbarui. Akun Anda telah aktif sepenuhnya.",
+      message: "Password berhasil diperbarui.",
     });
   } catch (error: any) {
     console.error("Change password error:", error);
     res.status(500).json({ success: false, message: error?.message || "Gagal mengubah kata sandi." });
+  }
+});
+
+// POST /api/auth/reset-request - User Requests Password Reset (Lupa Password)
+authRouter.post("/reset-request", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { role, identifier, note } = req.body;
+    const cleanId = (identifier || "").toString().trim();
+
+    if (!role || !cleanId) {
+      res.status(400).json({
+        success: false,
+        message: "Silakan pilih jenis akun dan masukkan NIP/NIS/Nomor HP Anda.",
+      });
+      return;
+    }
+
+    const mappedRole = mapRole(role);
+    if (!mappedRole) {
+      res.status(400).json({
+        success: false,
+        message: "Jenis pengguna tidak valid.",
+      });
+      return;
+    }
+
+    let targetUser: any = null;
+    let targetName = "";
+
+    if (mappedRole.roleEnum === Role.TEACHER) {
+      const teacher = await prisma.teacher.findFirst({
+        where: { nip: { equals: cleanId, mode: "insensitive" } },
+        include: { user: true },
+      });
+      if (teacher && teacher.user) {
+        targetUser = teacher.user;
+        targetName = teacher.fullName;
+      }
+    } else if (mappedRole.roleEnum === Role.STUDENT) {
+      const student = await prisma.student.findFirst({
+        where: { nis: { equals: cleanId, mode: "insensitive" } },
+        include: { user: true },
+      });
+      if (student && student.user) {
+        targetUser = student.user;
+        targetName = student.fullName;
+      }
+    } else if (mappedRole.roleEnum === Role.PARENT) {
+      const normalizedPhone = normalizePhoneNumber(cleanId);
+      const parent = await prisma.parent.findFirst({
+        where: {
+          OR: [
+            { phone: { equals: cleanId, mode: "insensitive" } },
+            { phone: { equals: normalizedPhone, mode: "insensitive" } },
+          ],
+        },
+        include: { user: true },
+      });
+      if (parent && parent.user) {
+        targetUser = parent.user;
+        targetName = parent.fullName;
+      }
+    } else {
+      targetUser = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { username: { equals: cleanId, mode: "insensitive" } },
+            { email: { equals: cleanId, mode: "insensitive" } },
+          ],
+        },
+      });
+      targetName = targetUser?.username || cleanId;
+    }
+
+    if (!targetUser) {
+      res.status(404).json({
+        success: false,
+        message: `Akun ${mappedRole.label} dengan ${mappedRole.identifierName} "${cleanId}" tidak ditemukan dalam sistem.`,
+      });
+      return;
+    }
+
+    // Create Audit Log for Admin Notification
+    await prisma.auditLog.create({
+      data: {
+        userId: targetUser.id,
+        userName: targetName,
+        userRole: targetUser.role,
+        action: "PASSWORD_RESET_REQUEST",
+        details: `Permintaan reset kata sandi diajukan untuk akun ${targetName} (${mappedRole.label} - ${cleanId}). Alasan/Catatan: ${note || "Lupa kata sandi"}`,
+        ipOrDevice: req.ip || "127.0.0.1",
+      },
+    });
+
+    // Notify all admin users
+    const admins = await prisma.user.findMany({
+      where: { role: Role.ADMIN },
+    });
+
+    for (const adm of admins) {
+      await prisma.notification.create({
+        data: {
+          userId: adm.id,
+          title: "Permintaan Reset Password",
+          message: `${targetName} (${mappedRole.label} - ${cleanId}) mengajukan permohonan reset kata sandi.`,
+          type: "warning",
+        },
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Permintaan reset kata sandi telah dikirim ke Super Admin. Silakan hubungi operator madrasah untuk konfirmasi.",
+      userName: targetName,
+    });
+  } catch (error: any) {
+    console.error("Reset request error:", error);
+    res.status(500).json({ success: false, message: error?.message || "Gagal mengirim permintaan reset." });
+  }
+});
+
+// GET /api/auth/reset-requests - Super Admin List Pending Reset Requests
+authRouter.get("/reset-requests", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const requests = await prisma.auditLog.findMany({
+      where: {
+        action: "PASSWORD_RESET_REQUEST",
+      },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      include: {
+        user: {
+          include: { teacher: true, student: true, parent: true },
+        },
+      },
+    });
+
+    res.json({
+      success: true,
+      data: requests,
+    });
+  } catch (error: any) {
+    console.error("Fetch reset requests error:", error);
+    res.status(500).json({ success: false, message: "Gagal memuat permintaan reset password." });
+  }
+});
+
+// POST /api/auth/process-reset - Super Admin Resets Password
+authRouter.post("/process-reset", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { userId, newPassword = "smtslogin" } = req.body;
+    if (!userId) {
+      res.status(400).json({ success: false, message: "User ID wajib disertakan." });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { teacher: true, student: true, parent: true },
+    });
+
+    if (!user) {
+      res.status(404).json({ success: false, message: "Pengguna tidak ditemukan." });
+      return;
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: newHash,
+      },
+    });
+
+    const targetName = user.teacher?.fullName || user.student?.fullName || user.parent?.fullName || user.username;
+
+    // Log admin action
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        userName: targetName,
+        userRole: user.role,
+        action: "PASSWORD_RESET_COMPLETED",
+        details: `Super Admin telah mereset kata sandi akun ${targetName} (${user.role}) ke "${newPassword}".`,
+        ipOrDevice: req.ip || "127.0.0.1",
+      },
+    });
+
+    // Notify user
+    await prisma.notification.create({
+      data: {
+        userId: user.id,
+        title: "Kata Sandi Direset",
+        message: `Kata sandi Anda telah direset oleh Super Admin menjadi "${newPassword}".`,
+        type: "info",
+      },
+    });
+
+    res.json({
+      success: true,
+      message: `Kata sandi untuk ${targetName} berhasil direset menjadi '${newPassword}'.`,
+    });
+  } catch (error: any) {
+    console.error("Process reset error:", error);
+    res.status(500).json({ success: false, message: error?.message || "Gagal memproses reset kata sandi." });
   }
 });
