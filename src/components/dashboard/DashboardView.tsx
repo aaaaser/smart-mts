@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useApp } from "../../context/AppContext";
 import {
   Users,
@@ -42,24 +42,20 @@ export const DashboardView: React.FC = () => {
     schedules,
     setActiveTab,
     showToast,
+    pendingResetCount,
+    setPendingResetCount,
+    fetchPendingResetCount,
   } = useApp();
 
   const [activeChartFilter, setActiveChartFilter] = useState<"siswa" | "guru">("siswa");
   const [resetRequests, setResetRequests] = useState<any[]>([]);
-  const [pendingResetCount, setPendingResetCount] = useState<number>(0);
   const [loadingReset, setLoadingReset] = useState(false);
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
   const [dismissingId, setDismissingId] = useState<string | null>(null);
 
   const role = currentUser?.role || "admin";
 
-  useEffect(() => {
-    if (role === "admin") {
-      fetchResetRequests();
-    }
-  }, [role]);
-
-  const fetchResetRequests = async () => {
+  const fetchResetRequests = useCallback(async () => {
     try {
       setLoadingReset(true);
       const res = await fetch("/api/auth/reset-requests?status=PENDING&onlyUndismissed=true&limit=3");
@@ -75,7 +71,13 @@ export const DashboardView: React.FC = () => {
     } finally {
       setLoadingReset(false);
     }
-  };
+  }, [setPendingResetCount]);
+
+  useEffect(() => {
+    if (role === "admin") {
+      fetchResetRequests();
+    }
+  }, [role, fetchResetRequests]);
 
   const handleDismissNotification = async (reqId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -87,7 +89,7 @@ export const DashboardView: React.FC = () => {
       const data = await res.json();
       if (data.success || res.ok) {
         showToast("info", "Notifikasi Disembunyikan", "Notifikasi disembunyikan dari dashboard. Data tetap tersimpan di database.");
-        // Remove from dashboard state only
+        // Remove from dashboard state only without reducing pending count
         setResetRequests((prev) => prev.filter((r) => r.id !== reqId));
       } else {
         showToast("error", "Gagal", data.message || "Gagal menyembunyikan notifikasi.");
@@ -118,7 +120,13 @@ export const DashboardView: React.FC = () => {
       const data = await res.json();
       if (data.success || res.ok) {
         showToast("success", "Reset Berhasil", `Kata sandi akun ${reqItem.userName} telah direset ke 'smtslogin'.`);
-        fetchResetRequests();
+        if (typeof data.remainingPending === "number") {
+          setPendingResetCount(data.remainingPending);
+        }
+        await Promise.all([
+          fetchResetRequests(),
+          fetchPendingResetCount(),
+        ]);
       } else {
         showToast("error", "Gagal", data.message || "Gagal memproses reset.");
       }

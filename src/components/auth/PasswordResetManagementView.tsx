@@ -42,14 +42,13 @@ interface ResetRequestItem {
 }
 
 export const PasswordResetManagementView: React.FC = () => {
-  const { showToast, addAuditLog, currentUser, users } = useApp();
+  const { showToast, addAuditLog, currentUser, users, pendingResetCount, setPendingResetCount, fetchPendingResetCount } = useApp();
 
   const [requests, setRequests] = useState<ResetRequestItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [roleFilter, setRoleFilter] = useState<string>("ALL");
   const [searchTerm, setSearchTerm] = useState<string>("");
-  const [pendingCount, setPendingCount] = useState<number>(0);
 
   // Action states
   const [processingId, setProcessingId] = useState<string | null>(null);
@@ -74,7 +73,7 @@ export const PasswordResetManagementView: React.FC = () => {
       if (json.success && Array.isArray(json.data)) {
         setRequests(json.data);
         if (typeof json.pendingCount === "number") {
-          setPendingCount(json.pendingCount);
+          setPendingResetCount(json.pendingCount);
         }
       }
     } catch (err) {
@@ -82,7 +81,7 @@ export const PasswordResetManagementView: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, roleFilter, searchTerm]);
+  }, [statusFilter, roleFilter, searchTerm, setPendingResetCount]);
 
   useEffect(() => {
     fetchRequests();
@@ -120,8 +119,15 @@ export const PasswordResetManagementView: React.FC = () => {
           newPass: "smtslogin",
         });
 
-        // Refresh request list
-        fetchRequests();
+        if (typeof data.remainingPending === "number") {
+          setPendingResetCount(data.remainingPending);
+        }
+
+        // Refresh request list and shared count
+        await Promise.all([
+          fetchRequests(),
+          fetchPendingResetCount(),
+        ]);
       } else {
         showToast("error", "Gagal", data.message || "Gagal memproses reset kata sandi.");
       }
@@ -156,9 +162,9 @@ export const PasswordResetManagementView: React.FC = () => {
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
               Pusat Keamanan & Kredensial
             </span>
-            {pendingCount > 0 && (
+            {pendingResetCount > 0 && (
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
-                {pendingCount} Permintaan Menunggu
+                {pendingResetCount} Permintaan Menunggu
               </span>
             )}
           </div>

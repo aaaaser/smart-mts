@@ -839,68 +839,62 @@ authRouter.post("/process-reset", async (req: Request, res: Response): Promise<v
     }
 
     const newHash = await bcrypt.hash(newPassword, 10);
+    const targetName = user.teacher?.fullName || user.student?.fullName || user.parent?.fullName || user.username;
+    const now = new Date();
 
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        passwordHash: newHash,
-        mustChangePassword: false, // User can use smtslogin directly without forced change
-      },
-    });
+    // Use Prisma transaction to guarantee atomic execution of password reset and status update
+    await prisma.$transaction(async (tx) => {
+      // 1. Update user password
+      await tx.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash: newHash,
+          mustChangePassword: false,
+        },
+      });
 
-    // Update PasswordResetRequest status to COMPLETED
-    if (requestId) {
-      try {
-        await (prisma as any).passwordResetRequest.update({
+      // 2. Update PasswordResetRequest status to COMPLETED
+      if (requestId) {
+        await (tx as any).passwordResetRequest.update({
           where: { id: requestId },
           data: {
             status: "COMPLETED",
-            processedAt: new Date(),
+            processedAt: now,
             processedBy: "Super Admin",
-            isDismissed: true,
           },
         });
-      } catch (err) {
-        console.warn("Update request status error:", err);
-      }
-    } else {
-      try {
-        await (prisma as any).passwordResetRequest.updateMany({
+      } else {
+        await (tx as any).passwordResetRequest.updateMany({
           where: { userId: user.id, status: "PENDING" },
           data: {
             status: "COMPLETED",
-            processedAt: new Date(),
+            processedAt: now,
             processedBy: "Super Admin",
-            isDismissed: true,
           },
         });
-      } catch (err) {
-        console.warn("Update all requests status error:", err);
       }
-    }
 
-    const targetName = user.teacher?.fullName || user.student?.fullName || user.parent?.fullName || user.username;
+      // 3. Log admin action
+      await tx.auditLog.create({
+        data: {
+          userId: user.id,
+          userName: targetName,
+          userRole: user.role,
+          action: "PASSWORD_RESET_COMPLETED",
+          details: `Super Admin telah mereset kata sandi akun ${targetName} (${user.role}) ke "${newPassword}".`,
+          ipOrDevice: req.ip || "127.0.0.1",
+        },
+      });
 
-    // Log admin action
-    await prisma.auditLog.create({
-      data: {
-        userId: user.id,
-        userName: targetName,
-        userRole: user.role,
-        action: "PASSWORD_RESET_COMPLETED",
-        details: `Super Admin telah mereset kata sandi akun ${targetName} (${user.role}) ke "${newPassword}".`,
-        ipOrDevice: req.ip || "127.0.0.1",
-      },
-    });
-
-    // Notify user
-    await prisma.notification.create({
-      data: {
-        userId: user.id,
-        title: "Kata Sandi Direset",
-        message: `Kata sandi Anda telah direset oleh Super Admin menjadi "${newPassword}". Silakan login kembali.`,
-        type: "info",
-      },
+      // 4. Notify user
+      await tx.notification.create({
+        data: {
+          userId: user.id,
+          title: "Kata Sandi Direset",
+          message: `Kata sandi Anda telah direset oleh Super Admin menjadi "${newPassword}". Silakan login kembali.`,
+          type: "info",
+        },
+      });
     });
 
     // Get remaining pending count

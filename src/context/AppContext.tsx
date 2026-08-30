@@ -273,6 +273,11 @@ interface AppContextType {
   submitContactMessage: (name: string, email: string, phone: string, subject: string, message: string) => { success: boolean; message: string };
   markContactMessageRead: (id: string) => void;
   deleteContactMessage: (id: string) => void;
+
+  // Password Reset Management (Single Source of Truth from PostgreSQL)
+  pendingResetCount: number;
+  setPendingResetCount: React.Dispatch<React.SetStateAction<number>>;
+  fetchPendingResetCount: () => Promise<number>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -369,6 +374,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [activeTab, setActiveTab] = useState<string>("dashboard");
   const [activeTeacherContext, setActiveTeacherContext] = useState<string>("mapel");
+  const [pendingResetCount, setPendingResetCount] = useState<number>(0);
+
+  // Centralized fetcher for reset requests count from PostgreSQL
+  const fetchPendingResetCount = useCallback(async (): Promise<number> => {
+    try {
+      const res = await fetch("/api/auth/reset-requests/count");
+      const data = await res.json();
+      if (data.success && typeof data.count === "number") {
+        setPendingResetCount(data.count);
+        return data.count;
+      }
+      return 0;
+    } catch (e) {
+      console.warn("Failed to fetch pending reset count", e);
+      return 0;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (currentUser?.role === "admin") {
+      fetchPendingResetCount();
+    }
+  }, [currentUser?.role, fetchPendingResetCount]);
 
   // Sync to local storage
   useEffect(() => saveToLocal("currentUser", currentUser), [currentUser]);
@@ -2094,6 +2122,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         submitContactMessage,
         markContactMessageRead,
         deleteContactMessage,
+        pendingResetCount,
+        setPendingResetCount,
+        fetchPendingResetCount,
       }}
     >
       {children}

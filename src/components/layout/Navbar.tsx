@@ -230,19 +230,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, onOpenAIAssista
                   <div className="w-2 h-2 rounded-full bg-emerald-600" />
                   <span>Lihat Biodata & Profil Lengkap</span>
                 </button>
-
-                {currentUser?.role === "admin" && (
-                  <button
-                    onClick={() => {
-                      setActiveTab("reset-password");
-                      setShowRoleMenu(false);
-                    }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 rounded-xl hover:bg-amber-50 hover:text-amber-900 transition-colors cursor-pointer"
-                  >
-                    <div className="w-2 h-2 rounded-full bg-amber-500" />
-                    <span>Permintaan Reset Password</span>
-                  </button>
-                )}
               </div>
 
               <div className="pt-2 border-t border-slate-100 mt-1">
