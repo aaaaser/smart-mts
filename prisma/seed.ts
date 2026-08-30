@@ -664,6 +664,67 @@ async function main() {
     });
   }
 
+  // 10b. Parents (Orang Tua / Wali)
+  console.log("👨‍👩‍👦 Creating Parents & Linking to Students...");
+  const passwordOrtu = await bcrypt.hash("smtslogin", 10);
+  const parentsSeed = [
+    {
+      name: "Drs. H. Mulyadi Rabbani",
+      phone: "081299887766",
+      username: "ortu_081299887766",
+      email: "mulyadi.rabbani@gmail.com",
+      address: "Jl. Madrasah Raya RT 01/RW 03, Jakarta Selatan",
+      studentNis: "242507001",
+      relationship: "Ayah Kandung",
+    },
+    {
+      name: "Hj. Siti Mariam, S.Pd.",
+      phone: "081299887755",
+      username: "ortu_081299887755",
+      email: "siti.mariam@gmail.com",
+      address: "Jl. Madrasah Raya RT 02/RW 03, Jakarta Selatan",
+      studentNis: "242507002",
+      relationship: "Ibu Kandung",
+    },
+  ];
+
+  for (const p of parentsSeed) {
+    const targetStudent = createdStudents.find((s) => s.nis === p.studentNis);
+    const parentUser = await prisma.user.create({
+      data: {
+        username: p.username,
+        email: p.email,
+        passwordHash: passwordOrtu,
+        role: Role.PARENT,
+        isActive: true,
+        mustChangePassword: true,
+        qrCodes: {
+          create: {
+            qrToken: generateRandomToken("SMTS-ORT"),
+            isActive: true,
+          },
+        },
+        parent: {
+          create: {
+            fullName: p.name,
+            phone: p.phone,
+            address: p.address,
+            ...(targetStudent
+              ? {
+                  parentStudents: {
+                    create: {
+                      studentId: targetStudent.id,
+                      relationship: p.relationship,
+                    },
+                  },
+                }
+              : {}),
+          },
+        },
+      },
+    });
+  }
+
   // 11. Class-Subject Assignments & Schedules
   console.log("🗓️ Creating Class Subjects & Schedules...");
   for (const cls of [class7A, class7B, class8A, class8B, class9A]) {
@@ -1424,7 +1485,8 @@ Artikel ini menguraikan tahapan praktis penggabungan simulasi PhET dengan lembar
   console.log("Default Login Credentials for Testing:");
   console.log("👉 Admin   : username 'admin'   / password 'admin123'");
   console.log("👉 Guru    : NIP '198203152008012015' (Nur Aisyah) / password 'smtslogin'");
-  console.log("👉 Siswa   : NIS '242507001' (Ahmad Fauzan) / password 'siswa123'");
+  console.log("👉 Siswa   : NIS '242507001' (Ahmad Fauzan) / password 'siswa123' (atau 'smtslogin')");
+  console.log("👉 Ortu    : No. HP '081299887766' (Drs. H. Mulyadi Rabbani) / password 'smtslogin'");
   console.log("--------------------------------------------------");
 }
 
