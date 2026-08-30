@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import cors from "cors";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
@@ -27,6 +28,13 @@ dotenv.config();
 
 const app = express();
 const PORT = 3000;
+
+// Ensure upload directory exists
+const uploadsDir = path.join(process.cwd(), "uploads", "avatars");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 app.use(cors());
 app.use(express.json({ limit: "25mb" }));

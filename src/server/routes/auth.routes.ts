@@ -553,7 +553,54 @@ authRouter.post("/reset-request", async (req: Request, res: Response): Promise<v
       return;
     }
 
-    // Create Audit Log for Admin Notification
+    // Check if there is already a PENDING request for this user
+    let existingPending: any = null;
+    try {
+      existingPending = await (prisma as any).passwordResetRequest.findFirst({
+        where: {
+          userId: targetUser.id,
+          status: "PENDING",
+        },
+      });
+    } catch {
+      // safe fallback
+    }
+
+    let requestRecord: any = null;
+    if (existingPending) {
+      // Re-activate and update note
+      try {
+        requestRecord = await (prisma as any).passwordResetRequest.update({
+          where: { id: existingPending.id },
+          data: {
+            note: note || existingPending.note || "Lupa kata sandi",
+            isDismissed: false,
+            dismissedAt: null,
+            updatedAt: new Date(),
+          },
+        });
+      } catch {
+        requestRecord = existingPending;
+      }
+    } else {
+      try {
+        requestRecord = await (prisma as any).passwordResetRequest.create({
+          data: {
+            userId: targetUser.id,
+            userName: targetName,
+            userRole: targetUser.role,
+            identifier: cleanId,
+            note: note || "Lupa kata sandi",
+            status: "PENDING",
+            isDismissed: false,
+          },
+        });
+      } catch (dbErr) {
+        console.warn("PasswordResetRequest create note:", dbErr);
+      }
+    }
+
+    // Create Audit Log for Admin Tracking
     await prisma.auditLog.create({
       data: {
         userId: targetUser.id,
@@ -585,6 +632,7 @@ authRouter.post("/reset-request", async (req: Request, res: Response): Promise<v
       success: true,
       message: "Permintaan reset kata sandi telah dikirim ke Super Admin. Silakan hubungi operator madrasah untuk konfirmasi.",
       userName: targetName,
+      requestId: requestRecord?.id,
     });
   } catch (error: any) {
     console.error("Reset request error:", error);
@@ -592,25 +640,135 @@ authRouter.post("/reset-request", async (req: Request, res: Response): Promise<v
   }
 });
 
-// GET /api/auth/reset-requests - Super Admin List Pending Reset Requests
+// GET /api/auth/reset-requests/count - Super Admin Count of Pending Reset Requests
+authRouter.get("/reset-requests/count", async (req: Request, res: Response): Promise<void> => {
+  try {
+    let count = 0;
+    try {
+      count = await (prisma as any).passwordResetRequest.count({
+        where: { status: "PENDING" },
+      });
+    } catch {
+      // Fallback count from audit log if table not ready
+      count = await prisma.auditLog.count({
+        where: { action: "PASSWORD_RESET_REQUEST" },
+      });
+    }
+    res.json({ success: true, count });
+  } catch (error: any) {
+    console.error("Fetch reset requests count error:", error);
+    res.json({ success: true, count: 0 });
+  }
+});
+
+// GET /api/auth/reset-requests - Super Admin List Reset Requests
 authRouter.get("/reset-requests", async (req: Request, res: Response): Promise<void> => {
   try {
-    const requests = await prisma.auditLog.findMany({
-      where: {
-        action: "PASSWORD_RESET_REQUEST",
-      },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-      include: {
-        user: {
-          include: { teacher: true, student: true, parent: true },
+    const { status, role, search, onlyUndismissed, limit = "50" } = req.query;
+
+    const whereClause: any = {};
+
+    if (status && status !== "ALL") {
+      whereClause.status = status as string;
+    }
+
+    if (role && role !== "ALL") {
+      const roleUpper = (role as string).toUpperCase();
+      whereClause.userRole = roleUpper;
+    }
+
+    if (onlyUndismissed === "true") {
+      whereClause.isDismissed = false;
+    }
+
+    if (search && typeof search === "string" && search.trim()) {
+      const q = search.trim();
+      whereClause.OR = [
+        { userName: { contains: q, mode: "insensitive" } },
+        { identifier: { contains: q, mode: "insensitive" } },
+      ];
+    }
+
+    let requests: any[] = [];
+    let pendingCount = 0;
+
+    try {
+      pendingCount = await (prisma as any).passwordResetRequest.count({
+        where: { status: "PENDING" },
+      });
+
+      requests = await (prisma as any).passwordResetRequest.findMany({
+        where: whereClause,
+        orderBy: { createdAt: "desc" },
+        take: parseInt(limit as string, 10) || 50,
+        include: {
+          user: {
+            include: {
+              teacher: true,
+              student: { include: { classMemberships: { where: { status: "ACTIVE" }, include: { class: true } } } },
+              parent: true,
+            },
+          },
         },
-      },
+      });
+    } catch (e) {
+      console.warn("PasswordResetRequest query note, fallback to audit log:", e);
+      const rawAudit = await prisma.auditLog.findMany({
+        where: { action: "PASSWORD_RESET_REQUEST" },
+        orderBy: { createdAt: "desc" },
+        take: parseInt(limit as string, 10) || 50,
+        include: {
+          user: {
+            include: { teacher: true, student: true, parent: true },
+          },
+        },
+      });
+      requests = rawAudit.map((a) => ({
+        id: a.id,
+        userId: a.userId || "",
+        userName: a.userName,
+        userRole: a.userRole,
+        identifier: a.details.match(/\((.*?)\)/)?.[1] || "-",
+        note: a.details,
+        status: "PENDING",
+        isDismissed: false,
+        createdAt: a.createdAt,
+        user: a.user,
+      }));
+      pendingCount = requests.length;
+    }
+
+    const formatted = requests.map((r: any) => {
+      const user = r.user;
+      const avatar = user?.teacher?.photo || user?.student?.photo || user?.parent?.photo;
+      const className = user?.student?.classMemberships?.[0]?.class?.name || undefined;
+      const nipOrNis = user?.teacher?.nip || user?.student?.nis || r.identifier;
+
+      return {
+        id: r.id,
+        userId: r.userId,
+        userName: r.userName,
+        userRole: r.userRole === "TEACHER" ? "guru" : r.userRole === "STUDENT" ? "siswa" : r.userRole === "PARENT" ? "orangtua" : "admin",
+        userRoleLabel: r.userRole === "TEACHER" ? "Guru" : r.userRole === "STUDENT" ? "Siswa" : r.userRole === "PARENT" ? "Orang Tua / Wali" : "Super Admin",
+        identifier: r.identifier,
+        nipOrNis,
+        className,
+        avatar,
+        note: r.note,
+        status: r.status,
+        isDismissed: r.isDismissed,
+        dismissedAt: r.dismissedAt,
+        processedAt: r.processedAt,
+        processedBy: r.processedBy,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+      };
     });
 
     res.json({
       success: true,
-      data: requests,
+      data: formatted,
+      pendingCount,
     });
   } catch (error: any) {
     console.error("Fetch reset requests error:", error);
@@ -618,17 +776,60 @@ authRouter.get("/reset-requests", async (req: Request, res: Response): Promise<v
   }
 });
 
+// POST /api/auth/dismiss-reset-request/:id - Super Admin Hides Notification From Dashboard Only
+authRouter.post("/dismiss-reset-request/:id", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    try {
+      await (prisma as any).passwordResetRequest.update({
+        where: { id },
+        data: {
+          isDismissed: true,
+          dismissedAt: new Date(),
+        },
+      });
+    } catch (e) {
+      console.warn("Dismiss update note:", e);
+    }
+
+    res.json({
+      success: true,
+      message: "Notifikasi disembunyikan dari dashboard (data tetap tersimpan di database).",
+    });
+  } catch (error: any) {
+    console.error("Dismiss reset request error:", error);
+    res.status(500).json({ success: false, message: error?.message || "Gagal menyembunyikan notifikasi." });
+  }
+});
+
 // POST /api/auth/process-reset - Super Admin Resets Password
 authRouter.post("/process-reset", async (req: Request, res: Response): Promise<void> => {
   try {
-    const { userId, newPassword = "smtslogin" } = req.body;
-    if (!userId) {
-      res.status(400).json({ success: false, message: "User ID wajib disertakan." });
+    const { requestId, userId, newPassword = "smtslogin" } = req.body;
+
+    let targetUserId = userId;
+
+    if (!targetUserId && requestId) {
+      try {
+        const reqObj = await (prisma as any).passwordResetRequest.findUnique({
+          where: { id: requestId },
+        });
+        if (reqObj) {
+          targetUserId = reqObj.userId;
+        }
+      } catch {
+        // safe fallback
+      }
+    }
+
+    if (!targetUserId) {
+      res.status(400).json({ success: false, message: "User ID atau Request ID wajib disertakan." });
       return;
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: userId },
+      where: { id: targetUserId },
       include: { teacher: true, student: true, parent: true },
     });
 
@@ -643,8 +844,40 @@ authRouter.post("/process-reset", async (req: Request, res: Response): Promise<v
       where: { id: user.id },
       data: {
         passwordHash: newHash,
+        mustChangePassword: false, // User can use smtslogin directly without forced change
       },
     });
+
+    // Update PasswordResetRequest status to COMPLETED
+    if (requestId) {
+      try {
+        await (prisma as any).passwordResetRequest.update({
+          where: { id: requestId },
+          data: {
+            status: "COMPLETED",
+            processedAt: new Date(),
+            processedBy: "Super Admin",
+            isDismissed: true,
+          },
+        });
+      } catch (err) {
+        console.warn("Update request status error:", err);
+      }
+    } else {
+      try {
+        await (prisma as any).passwordResetRequest.updateMany({
+          where: { userId: user.id, status: "PENDING" },
+          data: {
+            status: "COMPLETED",
+            processedAt: new Date(),
+            processedBy: "Super Admin",
+            isDismissed: true,
+          },
+        });
+      } catch (err) {
+        console.warn("Update all requests status error:", err);
+      }
+    }
 
     const targetName = user.teacher?.fullName || user.student?.fullName || user.parent?.fullName || user.username;
 
@@ -665,17 +898,29 @@ authRouter.post("/process-reset", async (req: Request, res: Response): Promise<v
       data: {
         userId: user.id,
         title: "Kata Sandi Direset",
-        message: `Kata sandi Anda telah direset oleh Super Admin menjadi "${newPassword}".`,
+        message: `Kata sandi Anda telah direset oleh Super Admin menjadi "${newPassword}". Silakan login kembali.`,
         type: "info",
       },
     });
 
+    // Get remaining pending count
+    let remainingPending = 0;
+    try {
+      remainingPending = await (prisma as any).passwordResetRequest.count({
+        where: { status: "PENDING" },
+      });
+    } catch {
+      remainingPending = 0;
+    }
+
     res.json({
       success: true,
       message: `Kata sandi untuk ${targetName} berhasil direset menjadi '${newPassword}'.`,
+      remainingPending,
     });
   } catch (error: any) {
     console.error("Process reset error:", error);
     res.status(500).json({ success: false, message: error?.message || "Gagal memproses reset kata sandi." });
   }
 });
+

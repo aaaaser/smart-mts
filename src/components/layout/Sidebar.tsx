@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useApp } from "../../context/AppContext";
 import {
   LayoutDashboard,
@@ -21,6 +21,7 @@ import {
   Globe,
   Newspaper,
   User,
+  KeyRound,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -31,8 +32,22 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenAIAssistant }) => {
   const { currentUser, activeTab, setActiveTab, teacherDuties, navigateToPublic, blogPosts } = useApp();
+  const [pendingResetCount, setPendingResetCount] = useState<number>(0);
 
   const role = currentUser?.role || "admin";
+
+  useEffect(() => {
+    if (role === "admin") {
+      fetch("/api/auth/reset-requests/count")
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.success && typeof d.count === "number") {
+            setPendingResetCount(d.count);
+          }
+        })
+        .catch((e) => console.warn("Reset count fetch error", e));
+    }
+  }, [role, activeTab]);
 
   // Check teacher's duties
   const myDuties = currentUser?.role === "guru"
@@ -51,6 +66,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenAIAssis
       { id: "profile", label: "Profil Admin", icon: <User className="w-4 h-4" /> },
       { id: "master", label: "Data Master", icon: <Users className="w-4 h-4" /> },
       { id: "duties", label: "Penugasan Guru", icon: <Award className="w-4 h-4" />, badge: "SK" },
+      { id: "reset-password", label: "Reset Password", icon: <KeyRound className="w-4 h-4" />, badge: pendingResetCount > 0 ? `${pendingResetCount} Menunggu` : undefined },
       { id: "blog_admin", label: "Manajemen Blog & Web", icon: <Newspaper className="w-4 h-4" />, badge: countPendingBlog > 0 ? `${countPendingBlog} Baru` : undefined },
       { id: "attendance", label: "Presensi QR Terpadu", icon: <QrCode className="w-4 h-4" />, badge: "QR" },
       { id: "curriculum", label: "Kurikulum & CP/KD", icon: <BookOpen className="w-4 h-4" /> },

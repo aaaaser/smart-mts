@@ -24,6 +24,7 @@ import {
   KeyRound,
   RotateCcw,
   Loader2,
+  X,
 } from "lucide-react";
 
 export const DashboardView: React.FC = () => {
@@ -45,8 +46,10 @@ export const DashboardView: React.FC = () => {
 
   const [activeChartFilter, setActiveChartFilter] = useState<"siswa" | "guru">("siswa");
   const [resetRequests, setResetRequests] = useState<any[]>([]);
+  const [pendingResetCount, setPendingResetCount] = useState<number>(0);
   const [loadingReset, setLoadingReset] = useState(false);
-  const [processingUserId, setProcessingUserId] = useState<string | null>(null);
+  const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
+  const [dismissingId, setDismissingId] = useState<string | null>(null);
 
   const role = currentUser?.role || "admin";
 
@@ -59,10 +62,13 @@ export const DashboardView: React.FC = () => {
   const fetchResetRequests = async () => {
     try {
       setLoadingReset(true);
-      const res = await fetch("/api/auth/reset-requests");
+      const res = await fetch("/api/auth/reset-requests?status=PENDING&onlyUndismissed=true&limit=3");
       const data = await res.json();
       if (data.success && Array.isArray(data.data)) {
         setResetRequests(data.data);
+        if (typeof data.pendingCount === "number") {
+          setPendingResetCount(data.pendingCount);
+        }
       }
     } catch (e) {
       console.error("Failed to load reset requests", e);
@@ -71,17 +77,47 @@ export const DashboardView: React.FC = () => {
     }
   };
 
-  const handleProcessReset = async (userId: string, userName: string) => {
-    setProcessingUserId(userId);
+  const handleDismissNotification = async (reqId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDismissingId(reqId);
+    try {
+      const res = await fetch(`/api/auth/dismiss-reset-request/${reqId}`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (data.success || res.ok) {
+        showToast("info", "Notifikasi Disembunyikan", "Notifikasi disembunyikan dari dashboard. Data tetap tersimpan di database.");
+        // Remove from dashboard state only
+        setResetRequests((prev) => prev.filter((r) => r.id !== reqId));
+      } else {
+        showToast("error", "Gagal", data.message || "Gagal menyembunyikan notifikasi.");
+      }
+    } catch (err: any) {
+      showToast("error", "Error", err?.message || "Gagal menyembunyikan notifikasi.");
+    } finally {
+      setDismissingId(null);
+    }
+  };
+
+  const handleProcessReset = async (reqItem: any) => {
+    if (!window.confirm(`Konfirmasi reset password untuk ${reqItem.userName} (${reqItem.userRoleLabel})?\n\nPassword akan direset menjadi: smtslogin`)) {
+      return;
+    }
+
+    setProcessingRequestId(reqItem.id);
     try {
       const res = await fetch("/api/auth/process-reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, newPassword: "smtslogin" }),
+        body: JSON.stringify({
+          requestId: reqItem.id,
+          userId: reqItem.userId,
+          newPassword: "smtslogin",
+        }),
       });
       const data = await res.json();
       if (data.success || res.ok) {
-        showToast("success", "Reset Berhasil", `Kata sandi ${userName} telah direset ke 'smtslogin'.`);
+        showToast("success", "Reset Berhasil", `Kata sandi akun ${reqItem.userName} telah direset ke 'smtslogin'.`);
         fetchResetRequests();
       } else {
         showToast("error", "Gagal", data.message || "Gagal memproses reset.");
@@ -89,7 +125,7 @@ export const DashboardView: React.FC = () => {
     } catch (err: any) {
       showToast("error", "Error", err?.message || "Gagal memproses reset.");
     } finally {
-      setProcessingUserId(null);
+      setProcessingRequestId(null);
     }
   };
 
@@ -198,69 +234,137 @@ export const DashboardView: React.FC = () => {
       </div>
 
       {/* Admin Password Reset Requests Notification Card */}
-      {role === "admin" && resetRequests.length > 0 && (
-        <div className="bg-amber-50/90 border border-amber-200 rounded-3xl p-5 sm:p-6 shadow-xs space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-amber-200/80 text-amber-900 flex items-center justify-center">
-                <KeyRound className="w-4 h-4" />
+      {role === "admin" && (resetRequests.length > 0 || pendingResetCount > 0) && (
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50/70 border border-amber-200/90 rounded-3xl p-5 sm:p-6 shadow-xs space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-xs">
+                <KeyRound className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-sm font-extrabold text-amber-950">
-                  Permintaan Reset Kata Sandi ({resetRequests.length})
-                </h3>
-                <p className="text-xs text-amber-800/80">
-                  Pengguna berikut mengajukan permohonan pemulihan kata sandi akun madrasah.
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm sm:text-base font-extrabold text-amber-950">
+                    Permintaan Reset Kata Sandi
+                  </h3>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-200 text-amber-950 border border-amber-300">
+                    {pendingResetCount} Menunggu
+                  </span>
+                </div>
+                <p className="text-xs text-amber-800/80 mt-0.5">
+                  Pengguna berikut mengajukan pemulihan kata sandi akun madrasah (Maksimal 3 akun terbaru ditampilkan).
                 </p>
               </div>
             </div>
-            <button
-              onClick={fetchResetRequests}
-              className="p-2 text-amber-800 hover:bg-amber-200/50 rounded-xl transition-colors cursor-pointer"
-              title="Segarkan data"
-            >
-              <RotateCcw className={`w-4 h-4 ${loadingReset ? "animate-spin" : ""}`} />
-            </button>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={fetchResetRequests}
+                className="p-2 text-amber-800 hover:bg-amber-200/60 rounded-xl transition-colors cursor-pointer"
+                title="Segarkan data"
+              >
+                <RotateCcw className={`w-4 h-4 ${loadingReset ? "animate-spin" : ""}`} />
+              </button>
+
+              <button
+                onClick={() => setActiveTab("reset-password")}
+                className="hidden sm:flex items-center gap-1 px-3.5 py-1.5 bg-amber-200 hover:bg-amber-300 text-amber-950 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                <span>Lihat Semua ({pendingResetCount})</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-            {resetRequests.slice(0, 4).map((req) => (
-              <div
-                key={req.id}
-                className="p-3.5 rounded-2xl bg-white border border-amber-200 flex items-center justify-between gap-3 shadow-xs"
-              >
-                <div className="space-y-0.5 min-w-0">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-xs font-bold text-slate-900 truncate">
-                      {req.userName}
-                    </span>
-                    <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-100 text-amber-900 border border-amber-200">
-                      {req.userRole}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 truncate">
-                    {req.details}
-                  </p>
-                  <p className="text-[10px] text-slate-400">
-                    {new Date(req.createdAt).toLocaleString("id-ID")}
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  disabled={processingUserId === req.userId}
-                  onClick={() => handleProcessReset(req.userId, req.userName)}
-                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shrink-0 transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
+          {resetRequests.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+              {resetRequests.slice(0, 3).map((req) => (
+                <div
+                  key={req.id}
+                  className="p-3.5 rounded-2xl bg-white border border-amber-200 flex flex-col justify-between gap-3 shadow-xs hover:border-amber-300 transition-all relative group"
                 >
-                  {processingUserId === req.userId ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <KeyRound className="w-3.5 h-3.5" />
-                  )}
-                  <span>Reset ke smtslogin</span>
-                </button>
-              </div>
-            ))}
+                  {/* Dismiss Button [x] - Only hides from dashboard, doesn't delete or complete request */}
+                  <button
+                    type="button"
+                    disabled={dismissingId === req.id}
+                    onClick={(e) => handleDismissNotification(req.id, e)}
+                    className="absolute top-2.5 right-2.5 w-6 h-6 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors cursor-pointer"
+                    title="Sembunyikan dari dashboard (data tetap tersimpan di database)"
+                  >
+                    {dismissingId === req.id ? (
+                      <Loader2 className="w-3 h-3 animate-spin text-slate-500" />
+                    ) : (
+                      <X className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+
+                  <div className="flex items-start gap-3 pr-6">
+                    <img
+                      src={req.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80"}
+                      alt={req.userName}
+                      className="w-10 h-10 rounded-xl object-cover ring-1 ring-slate-200 shrink-0 mt-0.5"
+                    />
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs font-bold text-slate-900 truncate">
+                          {req.userName}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-100 text-amber-900 border border-amber-200">
+                          {req.userRoleLabel || req.userRole}
+                        </span>
+                        <span className="text-[11px] font-mono font-bold text-slate-700">
+                          {req.identifier}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400">
+                        {new Date(req.createdAt).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" })} WIB
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-slate-400 font-medium truncate">
+                      Default: <strong className="text-slate-700">smtslogin</strong>
+                    </span>
+
+                    <button
+                      type="button"
+                      disabled={processingRequestId === req.id}
+                      onClick={() => handleProcessReset(req)}
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
+                    >
+                      {processingRequestId === req.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <KeyRound className="w-3.5 h-3.5" />
+                      )}
+                      <span>Reset</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-3 bg-amber-100/60 rounded-2xl text-xs text-amber-900 flex items-center justify-between">
+              <span>Notifikasi dashboard telah disembunyikan. Terdapat <strong>{pendingResetCount}</strong> permohonan yang masih menunggu di pusat data.</span>
+              <button
+                onClick={() => setActiveTab("reset-password")}
+                className="font-bold underline hover:text-amber-950 cursor-pointer ml-2"
+              >
+                Buka Manajemen Reset
+              </button>
+            </div>
+          )}
+
+          <div className="sm:hidden pt-1">
+            <button
+              onClick={() => setActiveTab("reset-password")}
+              className="w-full py-2 bg-amber-200 hover:bg-amber-300 text-amber-950 rounded-xl text-xs font-bold text-center flex items-center justify-center gap-1"
+            >
+              <span>Lihat Semua Permintaan ({pendingResetCount})</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       )}

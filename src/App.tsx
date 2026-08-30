@@ -31,6 +31,7 @@ import { PublicLoginView } from "./components/public/PublicLoginView";
 import { TeacherBlogManagementView } from "./components/blog/TeacherBlogManagementView";
 import { AdminBlogManagementView } from "./components/blog/AdminBlogManagementView";
 import { UserProfileView } from "./components/profile/UserProfileView";
+import { PasswordResetManagementView } from "./components/auth/PasswordResetManagementView";
 
 const PublicLayout: React.FC = () => {
   const { publicRoute } = useApp();
@@ -94,6 +95,9 @@ const DashboardLayout: React.FC = () => {
         return currentUser?.role === "siswa" ? <StudentDashboardView /> : <DashboardView />;
       case "profile":
         return <UserProfileView />;
+      case "reset-password":
+      case "reset_password":
+        return <PasswordResetManagementView />;
       case "blog_admin":
         return <AdminBlogManagementView />;
       case "blog_teacher":

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { useApp } from "../../context/AppContext";
 import {
   User as UserIcon,
@@ -24,7 +24,13 @@ import {
   RefreshCw,
   Clock,
   IdCard,
+  Camera,
+  Upload,
+  Printer,
+  Image as ImageIcon,
 } from "lucide-react";
+import { Modal } from "../common/Modal";
+import { PrintAttendanceCardModal } from "../attendance/PrintAttendanceCardModal";
 
 export const UserProfileView: React.FC = () => {
   const {
@@ -40,6 +46,17 @@ export const UserProfileView: React.FC = () => {
   } = useApp();
 
   const [activeSubTab, setActiveSubTab] = useState<string>("info");
+
+  // Photo Upload State
+  const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Print Card State
+  const [isPrintCardOpen, setIsPrintCardOpen] = useState(false);
 
   // Change Password Form State
   const [isChangingPassword, setIsChangingPassword] = useState(false);
@@ -70,6 +87,79 @@ export const UserProfileView: React.FC = () => {
   const myChildren = role === "orangtua"
     ? users.filter((u) => u.role === "siswa" && (u.id === currentUser.childStudentId || u.parentId === currentUser.id || u.parentPhone === currentUser.phone))
     : [];
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPhotoError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate type
+    const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    if (!validTypes.includes(file.type.toLowerCase())) {
+      setPhotoError("Format file harus berupa JPG, JPEG, PNG, atau WEBP.");
+      return;
+    }
+
+    // Validate size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoError("Ukuran file maksimal 5 MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      setPhotoPreview(result);
+      setPhotoBase64(result);
+    };
+    reader.onerror = () => {
+      setPhotoError("Gagal membaca file foto.");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSavePhoto = async () => {
+    if (!photoBase64) {
+      setPhotoError("Silakan pilih file foto terlebih dahulu.");
+      return;
+    }
+
+    setIsUploadingPhoto(true);
+    setPhotoError(null);
+
+    try {
+      const res = await fetch(`/api/users/${currentUser.id}/photo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          photoData: photoBase64,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success && data.photoUrl) {
+        // Update current user state
+        const updatedUser = {
+          ...currentUser,
+          avatar: data.photoUrl,
+        };
+        setCurrentUser(updatedUser);
+
+        showToast("success", "Foto Diperbarui", "Foto profil berhasil diperbarui.");
+        addAuditLog("UPDATE_PROFILE_PHOTO", `Pengguna ${currentUser.name} (${currentUser.role}) berhasil memperbarui foto profil.`);
+
+        setIsPhotoModalOpen(false);
+        setPhotoPreview(null);
+        setPhotoBase64(null);
+      } else {
+        setPhotoError(data.message || "Gagal mengunggah foto.");
+      }
+    } catch (err: any) {
+      setPhotoError(err?.message || "Terjadi kesalahan saat menghubungi server.");
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
 
   const handlePasswordChangeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,12 +229,26 @@ export const UserProfileView: React.FC = () => {
 
         <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
           <div className="flex items-center gap-5">
-            <div className="relative">
+            {/* User Photo with Camera Button */}
+            <div className="relative group">
               <img
                 src={currentUser.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80"}
                 alt={currentUser.name}
-                className="w-18 h-18 sm:w-20 sm:h-20 rounded-2xl object-cover ring-4 ring-white/20 shadow-lg"
+                className="w-20 h-20 sm:w-22 sm:h-22 rounded-2xl object-cover ring-4 ring-white/20 shadow-lg"
               />
+              <button
+                onClick={() => {
+                  setPhotoPreview(null);
+                  setPhotoBase64(null);
+                  setPhotoError(null);
+                  setIsPhotoModalOpen(true);
+                }}
+                className="absolute inset-0 bg-emerald-950/60 opacity-0 group-hover:opacity-100 rounded-2xl flex flex-col items-center justify-center transition-opacity cursor-pointer text-white text-[10px] font-bold gap-1 backdrop-blur-xs"
+                title="Klik untuk ubah foto profil"
+              >
+                <Camera className="w-5 h-5" />
+                <span>Ubah Foto</span>
+              </button>
               <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full ring-2 ring-emerald-950 flex items-center justify-center text-[10px]">
                 ✓
               </span>
@@ -186,18 +290,31 @@ export const UserProfileView: React.FC = () => {
             </div>
           </div>
 
-          {/* QR Token Badge */}
-          {currentUser.qrToken && (
-            <div className="p-3 bg-white/10 backdrop-blur-xs rounded-2xl border border-white/20 text-right sm:text-left shrink-0">
-              <div className="flex items-center gap-1.5 text-[10px] text-emerald-300 uppercase tracking-widest font-bold">
-                <QrCode className="w-3.5 h-3.5" />
-                <span>ID Kartu Digital</span>
-              </div>
-              <div className="text-sm font-mono font-bold text-white mt-0.5">
-                {currentUser.qrToken}
-              </div>
-            </div>
-          )}
+          {/* Quick Action Badges: Ubah Foto & Cetak Kartu Absensi */}
+          <div className="relative z-10 flex flex-wrap items-center gap-2.5 shrink-0">
+            <button
+              onClick={() => {
+                setPhotoPreview(null);
+                setPhotoBase64(null);
+                setPhotoError(null);
+                setIsPhotoModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all border border-white/20 shadow-xs cursor-pointer"
+            >
+              <Camera className="w-3.5 h-3.5" />
+              <span>Ubah Foto</span>
+            </button>
+
+            {(role === "guru" || role === "siswa") && (
+              <button
+                onClick={() => setIsPrintCardOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-white text-emerald-950 hover:bg-emerald-50 rounded-xl text-xs font-black transition-all shadow-md cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Cetak Kartu Absensi</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -301,6 +418,101 @@ export const UserProfileView: React.FC = () => {
           <span>Keamanan Akun</span>
         </button>
       </div>
+
+      {/* Ubah Foto Modal */}
+      {isPhotoModalOpen && (
+        <Modal
+          isOpen={isPhotoModalOpen}
+          onClose={() => setIsPhotoModalOpen(false)}
+          title="Ubah Foto Profil"
+        >
+          <div className="space-y-5">
+            <div className="flex flex-col sm:flex-row items-center gap-5 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+              <div className="relative">
+                <img
+                  src={photoPreview || currentUser.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80"}
+                  alt="Preview"
+                  className="w-24 h-24 rounded-2xl object-cover ring-2 ring-emerald-600/40 shadow-sm"
+                />
+                {photoPreview && (
+                  <span className="absolute -top-2 -right-2 px-2 py-0.5 bg-emerald-600 text-white text-[9px] font-bold rounded-full">
+                    Baru
+                  </span>
+                )}
+              </div>
+
+              <div className="space-y-1.5 text-center sm:text-left">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                  Pilih Berkas Foto Profil
+                </h4>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Mendukung format <strong>JPG, JPEG, PNG, WEBP</strong>. Ukuran berkas maksimal <strong>5 MB</strong>.
+                </p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/jpg"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-white border border-slate-300 hover:border-emerald-500 rounded-xl text-xs font-bold text-slate-700 hover:text-emerald-800 transition-colors cursor-pointer"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Pilih Berkas dari Komputer</span>
+                </button>
+              </div>
+            </div>
+
+            {photoError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{photoError}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsPhotoModalOpen(false)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl"
+              >
+                Batal
+              </button>
+
+              <button
+                type="button"
+                disabled={!photoBase64 || isUploadingPhoto}
+                onClick={handleSavePhoto}
+                className="flex items-center gap-2 px-5 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+              >
+                {isUploadingPhoto ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Menyimpan...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Simpan Foto Profil</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Print Attendance Card Modal */}
+      {isPrintCardOpen && (
+        <PrintAttendanceCardModal
+          isOpen={isPrintCardOpen}
+          onClose={() => setIsPrintCardOpen(false)}
+          targetUser={currentUser}
+        />
+      )}
 
       {/* Tab 1: Personal Info */}
       {activeSubTab === "info" && (

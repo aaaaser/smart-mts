@@ -160,6 +160,12 @@ enum BlogStatus {
   ARCHIVED
 }
 
+enum ResetRequestStatus {
+  PENDING
+  COMPLETED
+  REJECTED
+}
+
 // --------------------------------------------------------
 // USER & IDENTITY
 // --------------------------------------------------------
@@ -189,6 +195,7 @@ model User {
   notifications             Notification[]
   auditLogs                 AuditLog[]
   blogPosts                 BlogPost[]
+  passwordResetRequests     PasswordResetRequest[]
 
   @@index([username])
   @@index([email])
@@ -288,6 +295,7 @@ model Parent {
   fullName    String
   phone       String?
   address     String?
+  photo       String?
   occupation  String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -1291,5 +1299,31 @@ model ContactMessage {
 
   @@index([isRead])
   @@index([createdAt])
+}
+
+// --------------------------------------------------------
+// PASSWORD RESET REQUESTS
+// --------------------------------------------------------
+
+model PasswordResetRequest {
+  id          String             @id @default(uuid())
+  userId      String
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userName    String
+  userRole    Role
+  identifier  String             // NIP, NIS, No. HP, or Username
+  note        String?
+  status      ResetRequestStatus @default(PENDING)
+  isDismissed Boolean            @default(false)
+  dismissedAt DateTime?
+  processedAt DateTime?
+  processedBy String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([status])
+  @@index([isDismissed])
+  @@index([createdAt])
+  @@index([userId])
 }
 

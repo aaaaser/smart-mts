@@ -218,57 +218,37 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, onOpenAIAssista
                 </button>
               </div>
 
-              {/* Fast Demo Role Switch */}
-              <div className="py-1">
-                <div className="px-2 pb-1.5 text-[10px] font-bold tracking-widest text-slate-400 uppercase">
-                  Ganti Akun Demo
-                </div>
+              {/* User Menu Actions (Profile & Logout) */}
+              <div className="pt-1 space-y-1">
                 <button
-                  onClick={() => { loginAs("admin"); setShowRoleMenu(false); }}
-                  className="w-full flex items-center justify-between px-2.5 py-2 text-xs rounded-lg hover:bg-emerald-50 text-slate-700 transition-colors"
+                  onClick={() => {
+                    setActiveTab("profile");
+                    setShowRoleMenu(false);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 rounded-xl hover:bg-emerald-50 hover:text-emerald-900 transition-colors cursor-pointer"
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-800" />
-                    <span className="font-medium">Super Admin (Drs. Bambang)</span>
-                  </div>
-                  {currentUser?.role === "admin" && <Check className="w-3.5 h-3.5 text-emerald-700" />}
+                  <div className="w-2 h-2 rounded-full bg-emerald-600" />
+                  <span>Lihat Biodata & Profil Lengkap</span>
                 </button>
-                <button
-                  onClick={() => { loginAs("guru", "teacher_01"); setShowRoleMenu(false); }}
-                  className="w-full flex items-center justify-between px-2.5 py-2 text-xs rounded-lg hover:bg-emerald-50 text-slate-700 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-600" />
-                    <span className="font-medium">Guru MTK (Siti Nurhaliza, M.Pd.)</span>
-                  </div>
-                  {currentUser?.id === "teacher_01" && <Check className="w-3.5 h-3.5 text-emerald-600" />}
-                </button>
-                <button
-                  onClick={() => { loginAs("siswa", "std_01"); setShowRoleMenu(false); }}
-                  className="w-full flex items-center justify-between px-2.5 py-2 text-xs rounded-lg hover:bg-emerald-50 text-slate-700 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-teal-600" />
-                    <span className="font-medium">Siswa (Ahmad Fauzan - 7A)</span>
-                  </div>
-                  {currentUser?.id === "std_01" && <Check className="w-3.5 h-3.5 text-teal-600" />}
-                </button>
-                <button
-                  onClick={() => { loginAs("orangtua", "parent_01"); setShowRoleMenu(false); }}
-                  className="w-full flex items-center justify-between px-2.5 py-2 text-xs rounded-lg hover:bg-amber-50 text-slate-700 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-amber-600" />
-                    <span className="font-medium">Orang Tua (H. Hendra Pratama)</span>
-                  </div>
-                  {currentUser?.id === "parent_01" && <Check className="w-3.5 h-3.5 text-amber-600" />}
-                </button>
+
+                {currentUser?.role === "admin" && (
+                  <button
+                    onClick={() => {
+                      setActiveTab("reset-password");
+                      setShowRoleMenu(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 rounded-xl hover:bg-amber-50 hover:text-amber-900 transition-colors cursor-pointer"
+                  >
+                    <div className="w-2 h-2 rounded-full bg-amber-500" />
+                    <span>Permintaan Reset Password</span>
+                  </button>
+                )}
               </div>
 
               <div className="pt-2 border-t border-slate-100 mt-1">
                 <button
                   onClick={() => { logout(); setShowRoleMenu(false); }}
-                  className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-semibold text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-rose-600 rounded-xl hover:bg-rose-50 transition-colors cursor-pointer"
                 >
                   <LogOut className="w-4 h-4" />
                   <span>Keluar dari Aplikasi</span>

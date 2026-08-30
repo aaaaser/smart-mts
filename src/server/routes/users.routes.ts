@@ -1,5 +1,7 @@
 import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
+import fs from "fs";
+import path from "path";
 import { prisma, checkDatabaseConnection } from "../../lib/prisma";
 import { Role } from "@prisma/client";
 import {
@@ -62,7 +64,7 @@ usersRouter.get("/", async (req: Request, res: Response): Promise<void> => {
         email: u.email,
         role: u.role === "TEACHER" ? "guru" : u.role === "STUDENT" ? "siswa" : u.role === "PARENT" ? "orangtua" : "admin",
         name: u.teacher?.fullName || u.student?.fullName || u.parent?.fullName || u.username,
-        avatar: u.teacher?.photo || u.student?.photo || undefined,
+        avatar: u.teacher?.photo || u.student?.photo || u.parent?.photo || undefined,
         nip: u.teacher?.nip || undefined,
         nipOrNis: u.teacher?.nip || u.student?.nis || undefined,
         nuptk: u.teacher?.nuptk || undefined,
@@ -549,3 +551,102 @@ usersRouter.delete("/:id", async (req: Request, res: Response): Promise<void> =>
     res.status(500).json({ success: false, message: error?.message });
   }
 });
+
+// POST Update User Profile Photo
+usersRouter.post("/:id/photo", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { photoData, photoUrl } = req.body;
+
+    if (!photoData && !photoUrl) {
+      res.status(400).json({ success: false, message: "Data foto tidak boleh kosong." });
+      return;
+    }
+
+    let finalPhotoUrl = photoUrl;
+
+    if (photoData && typeof photoData === "string") {
+      if (!photoData.startsWith("data:image/")) {
+        res.status(400).json({ success: false, message: "Format gambar harus JPG, JPEG, PNG, atau WEBP." });
+        return;
+      }
+
+      const matches = photoData.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
+      if (!matches) {
+        res.status(400).json({ success: false, message: "Format data gambar base64 tidak valid." });
+        return;
+      }
+
+      const ext = matches[1] === "jpeg" ? "jpg" : matches[1];
+      const buffer = Buffer.from(matches[2], "base64");
+
+      if (buffer.length > 5 * 1024 * 1024) {
+        res.status(400).json({ success: false, message: "Ukuran file foto maksimal 5 MB." });
+        return;
+      }
+
+      const uploadsDir = path.join(process.cwd(), "uploads", "avatars");
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+
+      const filename = `avatar_${id}_${Date.now()}.${ext}`;
+      const filePath = path.join(uploadsDir, filename);
+      fs.writeFileSync(filePath, buffer);
+      finalPhotoUrl = `/uploads/avatars/${filename}`;
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+      include: { teacher: true, student: true, parent: true },
+    });
+
+    if (!user) {
+      res.status(404).json({ success: false, message: "Pengguna tidak ditemukan." });
+      return;
+    }
+
+    if (user.teacher) {
+      await prisma.teacher.update({
+        where: { id: user.teacher.id },
+        data: { photo: finalPhotoUrl },
+      });
+      await prisma.organizationStructure.updateMany({
+        where: { teacherId: user.teacher.id },
+        data: { photo: finalPhotoUrl },
+      });
+    } else if (user.student) {
+      await prisma.student.update({
+        where: { id: user.student.id },
+        data: { photo: finalPhotoUrl },
+      });
+    } else if (user.parent) {
+      await prisma.parent.update({
+        where: { id: user.parent.id },
+        data: { photo: finalPhotoUrl },
+      });
+    }
+
+    const targetName = user.teacher?.fullName || user.student?.fullName || user.parent?.fullName || user.username;
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        userName: targetName,
+        userRole: user.role,
+        action: "UPDATE_PROFILE_PHOTO",
+        details: `Memperbarui foto profil akun ${targetName} (${user.role})`,
+        ipOrDevice: req.ip || "127.0.0.1",
+      },
+    });
+
+    res.json({
+      success: true,
+      message: "Foto profil berhasil diperbarui.",
+      photoUrl: finalPhotoUrl,
+    });
+  } catch (error: any) {
+    console.error("Update photo error:", error);
+    res.status(500).json({ success: false, message: error?.message || "Gagal memperbarui foto profil." });
+  }
+});
+
