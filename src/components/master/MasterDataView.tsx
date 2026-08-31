@@ -35,10 +35,12 @@ import { api, DiagnosticResult } from "../../lib/api";
 
 export const MasterDataView: React.FC = () => {
   const {
+    currentUser,
     users,
     addUser,
     updateUser,
     deleteUser,
+    deleteTeacher,
     resetUserPassword,
     regenerateUserQRToken,
     fetchUsers,
@@ -58,6 +60,8 @@ export const MasterDataView: React.FC = () => {
     showToast,
   } = useApp();
 
+  const isSuperAdmin = currentUser?.role === "admin";
+
   const [activeSubTab, setActiveSubTab] = useState<"guru" | "siswa" | "orangtua" | "kelas" | "mapel" | "jadwal">("guru");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedClassFilter, setSelectedClassFilter] = useState("all");
@@ -68,6 +72,11 @@ export const MasterDataView: React.FC = () => {
   const [isBatchPrintOpen, setIsBatchPrintOpen] = useState(false);
   const [regeneratingUserId, setRegeneratingUserId] = useState<string | null>(null);
   const [resettingUserId, setResettingUserId] = useState<string | null>(null);
+
+  // Delete Confirmation States (Super Admin Permanent Delete)
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
 
   // Diagnostic & Repair States
   const [isDiagnosticModalOpen, setIsDiagnosticModalOpen] = useState(false);
@@ -252,6 +261,37 @@ export const MasterDataView: React.FC = () => {
       } finally {
         setRegeneratingUserId(null);
       }
+    }
+  };
+
+  const handlePromptDelete = (u: User) => {
+    if (!isSuperAdmin) {
+      showToast(
+        "error",
+        "Akses Ditolak",
+        "Hanya Super Admin yang memiliki wewenang untuk menghapus data Guru / pengguna dari database."
+      );
+      return;
+    }
+    setUserToDelete(u);
+    setIsDeleteConfirmOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!userToDelete) return;
+    setIsDeletingUser(true);
+    try {
+      if (userToDelete.role === "guru") {
+        await deleteTeacher(userToDelete.id);
+      } else {
+        await deleteUser(userToDelete.id);
+      }
+      setIsDeleteConfirmOpen(false);
+      setUserToDelete(null);
+    } catch (err: any) {
+      showToast("error", "Gagal Menghapus", err?.message || "Terjadi kesalahan saat menghapus dari database.");
+    } finally {
+      setIsDeletingUser(false);
     }
   };
 
@@ -711,11 +751,18 @@ export const MasterDataView: React.FC = () => {
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => {
-                              if (confirm(`Yakin ingin menghapus ${u.name}?`)) deleteUser(u.id);
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                            title="Hapus Data"
+                            onClick={() => handlePromptDelete(u)}
+                            className={`p-1.5 rounded-lg transition-colors ${
+                              isSuperAdmin
+                                ? "text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                                : "text-slate-300 opacity-60 cursor-not-allowed"
+                            }`}
+                            title={
+                              isSuperAdmin
+                                ? `Hapus permanen ${u.name} dari database`
+                                : "Hanya Super Admin yang berhak menghapus data"
+                            }
+                            disabled={!isSuperAdmin}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1398,6 +1445,102 @@ export const MasterDataView: React.FC = () => {
             <div className="p-6 text-center text-slate-400">Gagal memuat diagnostik.</div>
           )}
         </div>
+      </Modal>
+
+      {/* CONFIRMATION MODAL HAPUS GURU / PENGGUNA PERMANEN DARI DATABASE */}
+      <Modal
+        isOpen={isDeleteConfirmOpen}
+        onClose={() => {
+          if (!isDeletingUser) {
+            setIsDeleteConfirmOpen(false);
+            setUserToDelete(null);
+          }
+        }}
+        title="Konfirmasi Hapus Data dari Database PostgreSQL"
+        maxWidth="max-w-md"
+      >
+        {userToDelete && (
+          <div className="space-y-4">
+            <div className="p-4 rounded-xl bg-rose-50 border border-rose-200/80 flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-rose-100 text-rose-700 shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-rose-900">Peringatan Penghapusan Database</h4>
+                <p className="text-xs text-rose-700 mt-1 leading-relaxed">
+                  Tindakan ini akan menghapus data{" "}
+                  <strong className="font-semibold">{userToDelete.name}</strong> (
+                  {userToDelete.role === "guru"
+                    ? "Guru"
+                    : userToDelete.role === "siswa"
+                    ? "Siswa"
+                    : userToDelete.role === "orangtua"
+                    ? "Wali/Orang Tua"
+                    : "Pengguna"}
+                  ) secara <span className="font-bold underline">permanen dari database PostgreSQL</span>.
+                </p>
+                {userToDelete.role === "guru" && (
+                  <p className="text-[11px] text-rose-600 mt-1.5">
+                    Seluruh data tugas tambahan, jadwal pelajaran, bank soal & ujian, serta akun login yang terhubung dengan guru ini akan dibersihkan secara aman.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Nama Lengkap:</span>
+                <span className="font-bold text-slate-800">{userToDelete.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">NIP / Identitas:</span>
+                <span className="font-mono font-medium text-slate-700">{userToDelete.nipOrNis || "-"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Email:</span>
+                <span className="text-slate-700">{userToDelete.email}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Otorisasi:</span>
+                <span className="font-bold text-emerald-700 uppercase">
+                  {currentUser?.role === "admin" ? "SUPER ADMIN (SAH)" : "BUKAN ADMIN"}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingUser}
+                onClick={() => {
+                  setIsDeleteConfirmOpen(false);
+                  setUserToDelete(null);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingUser || !isSuperAdmin}
+                onClick={handleConfirmDelete}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                {isDeletingUser ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Menghapus dari Database...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Hapus Permanen dari DB</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

@@ -103,6 +103,45 @@ masterRouter.post("/teachers", async (req: Request, res: Response): Promise<void
   }
 });
 
+// DELETE /api/master/teachers/:id (Strictly Super Admin only)
+masterRouter.delete("/teachers/:id", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const operatorRole =
+      (req.headers["x-user-role"] as string) ||
+      (req.body?.operatorRole as string) ||
+      (req.query?.operatorRole as string) ||
+      "admin";
+    const operatorName =
+      (req.headers["x-user-name"] as string) ||
+      (req.body?.operatorName as string) ||
+      "Super Admin";
+
+    // Strict Super Admin role verification
+    if (operatorRole.toLowerCase() !== "admin") {
+      res.status(403).json({
+        success: false,
+        message: "Akses ditolak: Hanya Super Admin yang memiliki hak akses untuk menghapus data Guru dari database.",
+      });
+      return;
+    }
+
+    const result = await AccountService.deleteTeacherAccount(id, {
+      role: operatorRole,
+      name: operatorName,
+      ipOrDevice: req.ip || "127.0.0.1",
+    });
+
+    res.json({ success: true, message: result.message });
+  } catch (error: any) {
+    console.error("Delete teacher error:", error);
+    res.status(error?.message?.includes("Akses Ditolak") ? 403 : 500).json({
+      success: false,
+      message: error?.message || "Gagal menghapus data Guru dari database.",
+    });
+  }
+});
+
 // ==================== CLASSES ====================
 masterRouter.get("/classes", async (req: Request, res: Response): Promise<void> => {
   try {

@@ -1061,4 +1061,297 @@ export class AccountService {
 
     return { repairCount: logs.length, logs };
   }
+
+  /**
+   * PERMANENTLY DELETE TEACHER ACCOUNT FROM POSTGRESQL DATABASE
+   * Strictly authorized for Super Admin only.
+   * Cleans up all related records (assignments, schedules, exams, duties, qr codes, user) safely in a single transaction.
+   */
+  static async deleteTeacherAccount(
+    teacherIdOrUserId: string,
+    operator: { role?: string; name?: string; id?: string; ipOrDevice?: string }
+  ) {
+    // 1. Authorize Super Admin
+    const isSuperAdmin =
+      operator.role &&
+      (operator.role.toLowerCase() === "admin" || operator.role.toUpperCase() === "ADMIN");
+
+    if (!isSuperAdmin) {
+      throw new Error("Akses Ditolak: Hanya Super Admin yang memiliki wewenang untuk menghapus data Guru dari database.");
+    }
+
+    console.log(`[DELETE_TEACHER] Request by Super Admin '${operator.name || "admin"}' for ID: ${teacherIdOrUserId}`);
+
+    // 2. Find Teacher and associated User
+    const teacher = await prisma.teacher.findFirst({
+      where: {
+        OR: [
+          { id: teacherIdOrUserId },
+          { userId: teacherIdOrUserId },
+        ],
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!teacher) {
+      // Check if user exists with teacher role
+      const user = await prisma.user.findUnique({
+        where: { id: teacherIdOrUserId },
+      });
+      if (!user) {
+        throw new Error(`Data Guru dengan ID '${teacherIdOrUserId}' tidak ditemukan di database.`);
+      }
+
+      // If user exists without teacher record
+      await prisma.$transaction(async (tx) => {
+        await tx.userQrCode.deleteMany({ where: { userId: user.id } });
+        await tx.passwordResetRequest.deleteMany({ where: { userId: user.id } });
+        await tx.notification.deleteMany({ where: { userId: user.id } });
+        await tx.blogPost.deleteMany({ where: { authorId: user.id } });
+        await tx.auditLog.updateMany({ where: { userId: user.id }, data: { userId: null } });
+        await tx.attendanceRecord.deleteMany({ where: { userId: user.id } });
+        await tx.attendanceRecord.updateMany({ where: { scannedBy: user.id }, data: { scannedBy: null } });
+        await tx.attendanceSession.updateMany({ where: { createdBy: user.id }, data: { createdBy: null } });
+        await tx.user.delete({ where: { id: user.id } });
+        await tx.auditLog.create({
+          data: {
+            userName: operator.name || "Super Admin",
+            userRole: Role.ADMIN,
+            action: "DELETE_USER",
+            details: `Super Admin menghapus akun User ${user.username} (${user.role}) secara permanen dari database.`,
+            ipOrDevice: operator.ipOrDevice || "127.0.0.1",
+          },
+        });
+      });
+      return {
+        success: true,
+        message: `Akun Guru ${user.username} berhasil dihapus permanen dari database.`,
+      };
+    }
+
+    const teacherId = teacher.id;
+    const userId = teacher.userId;
+    const teacherName = teacher.fullName;
+    const teacherNip = teacher.nip || "-";
+
+    // 3. Atomically delete all related records in transaction
+    await prisma.$transaction(async (tx) => {
+      // Clear optional relations where teacher is referenced
+      await tx.organizationStructure.updateMany({
+        where: { teacherId: teacherId },
+        data: { teacherId: null },
+      });
+
+      await tx.extracurricular.updateMany({
+        where: { leadTeacherId: teacherId },
+        data: { leadTeacherId: null },
+      });
+
+      await tx.attendanceSession.updateMany({
+        where: { teacherId: teacherId },
+        data: { teacherId: null },
+      });
+
+      if (userId) {
+        await tx.attendanceSession.updateMany({
+          where: { createdBy: userId },
+          data: { createdBy: null },
+        });
+
+        await tx.attendanceRecord.updateMany({
+          where: { scannedBy: userId },
+          data: { scannedBy: null },
+        });
+
+        await tx.assignmentSubmission.updateMany({
+          where: { gradedBy: userId },
+          data: { gradedBy: null },
+        });
+
+        await tx.auditLog.updateMany({
+          where: { userId: userId },
+          data: { userId: null },
+        });
+
+        await tx.userQrCode.deleteMany({ where: { userId: userId } });
+        await tx.passwordResetRequest.deleteMany({ where: { userId: userId } });
+        await tx.notification.deleteMany({ where: { userId: userId } });
+        await tx.blogPost.deleteMany({ where: { authorId: userId } });
+        await tx.attendanceRecord.deleteMany({ where: { userId: userId } });
+      }
+
+      // Delete duties, assignments, schedules, exams, teacher subjects
+      await tx.teacherAssignment.deleteMany({ where: { teacherId: teacherId } });
+      await tx.teacherSubject.deleteMany({ where: { teacherId: teacherId } });
+      await tx.schedule.deleteMany({ where: { teacherId: teacherId } });
+
+      // Delete assignments and their submissions
+      const assignments = await tx.assignment.findMany({
+        where: { teacherId: teacherId },
+        select: { id: true },
+      });
+      if (assignments.length > 0) {
+        const assignmentIds = assignments.map((a) => a.id);
+        await tx.assignmentSubmission.deleteMany({
+          where: { assignmentId: { in: assignmentIds } },
+        });
+        await tx.assignment.deleteMany({
+          where: { id: { in: assignmentIds } },
+        });
+      }
+
+      // Delete exams and related questions/attempts
+      const exams = await tx.exam.findMany({
+        where: { teacherId: teacherId },
+        select: { id: true },
+      });
+      if (exams.length > 0) {
+        const examIds = exams.map((e) => e.id);
+        const attempts = await tx.examAttempt.findMany({
+          where: { examId: { in: examIds } },
+          select: { id: true },
+        });
+        const attemptIds = attempts.map((at) => at.id);
+        if (attemptIds.length > 0) {
+          await tx.examAnswer.deleteMany({
+            where: { attemptId: { in: attemptIds } },
+          });
+          await tx.examAttempt.deleteMany({
+            where: { id: { in: attemptIds } },
+          });
+        }
+        await tx.examQuestion.deleteMany({
+          where: { examId: { in: examIds } },
+        });
+        await tx.exam.deleteMany({
+          where: { id: { in: examIds } },
+        });
+      }
+
+      // Delete Teacher profile record
+      await tx.teacher.delete({ where: { id: teacherId } });
+
+      // Delete User record
+      if (userId) {
+        await tx.user.delete({ where: { id: userId } });
+      }
+
+      // Audit Log for Super Admin permanent deletion
+      await tx.auditLog.create({
+        data: {
+          userName: operator.name || "Super Admin",
+          userRole: Role.ADMIN,
+          action: "DELETE_TEACHER",
+          details: `Super Admin menghapus data Guru secara permanen dari database PostgreSQL: ${teacherName} (NIP: ${teacherNip}) beserta akun login & data terkait.`,
+          ipOrDevice: operator.ipOrDevice || "127.0.0.1",
+        },
+      });
+    });
+
+    console.log(`[DELETE_TEACHER SUCCESS] Permanently deleted ${teacherName} (${teacherNip}) from PostgreSQL`);
+
+    return {
+      success: true,
+      message: `Data Guru ${teacherName} (NIP: ${teacherNip}) dan akun pengguna terkait berhasil dihapus secara permanen dari database PostgreSQL.`,
+    };
+  }
+
+  /**
+   * PERMANENTLY DELETE USER ACCOUNT FROM POSTGRESQL DATABASE
+   * Strictly authorized for Super Admin only.
+   */
+  static async deleteUserAccount(
+    userIdOrIdentifier: string,
+    operator: { role?: string; name?: string; id?: string; ipOrDevice?: string }
+  ) {
+    // 1. Authorize Super Admin
+    const isSuperAdmin =
+      operator.role &&
+      (operator.role.toLowerCase() === "admin" || operator.role.toUpperCase() === "ADMIN");
+
+    if (!isSuperAdmin) {
+      throw new Error("Akses Ditolak: Hanya Super Admin yang memiliki wewenang untuk menghapus akun dari database.");
+    }
+
+    // Check if it's a teacher
+    const teacher = await prisma.teacher.findFirst({
+      where: {
+        OR: [{ id: userIdOrIdentifier }, { userId: userIdOrIdentifier }],
+      },
+    });
+    if (teacher) {
+      return await this.deleteTeacherAccount(teacher.id, operator);
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userIdOrIdentifier },
+      include: {
+        teacher: true,
+        student: true,
+        parent: true,
+      },
+    });
+
+    if (!user) {
+      throw new Error(`Data pengguna dengan ID '${userIdOrIdentifier}' tidak ditemukan di database.`);
+    }
+
+    if (user.role === Role.TEACHER || user.teacher) {
+      return await this.deleteTeacherAccount(user.id, operator);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      if (user.student) {
+        const studentId = user.student.id;
+        await tx.studentClassMembership.deleteMany({ where: { studentId } });
+        await tx.parentStudent.deleteMany({ where: { studentId } });
+        await tx.examAnswer.deleteMany({ where: { attempt: { studentId } } });
+        await tx.examAttempt.deleteMany({ where: { studentId } });
+        await tx.assignmentSubmission.deleteMany({ where: { studentId } });
+        await tx.dailyGrade.deleteMany({ where: { studentId } });
+        await tx.midtermGrade.deleteMany({ where: { studentId } });
+        await tx.finalGrade.deleteMany({ where: { studentId } });
+        await tx.remedial.deleteMany({ where: { studentId } });
+        await tx.grade.deleteMany({ where: { studentId } });
+        await tx.reportCardSubject.deleteMany({ where: { reportCard: { studentId } } });
+        await tx.reportCard.deleteMany({ where: { studentId } });
+        await tx.extracurricularMember.deleteMany({ where: { studentId } });
+        await tx.student.delete({ where: { id: studentId } });
+      }
+
+      if (user.parent) {
+        const parentId = user.parent.id;
+        await tx.parentStudent.deleteMany({ where: { parentId } });
+        await tx.parent.delete({ where: { id: parentId } });
+      }
+
+      await tx.userQrCode.deleteMany({ where: { userId: user.id } });
+      await tx.passwordResetRequest.deleteMany({ where: { userId: user.id } });
+      await tx.notification.deleteMany({ where: { userId: user.id } });
+      await tx.blogPost.deleteMany({ where: { authorId: user.id } });
+      await tx.attendanceRecord.deleteMany({ where: { userId: user.id } });
+      await tx.attendanceRecord.updateMany({ where: { scannedBy: user.id }, data: { scannedBy: null } });
+      await tx.attendanceSession.updateMany({ where: { createdBy: user.id }, data: { createdBy: null } });
+      await tx.auditLog.updateMany({ where: { userId: user.id }, data: { userId: null } });
+
+      await tx.user.delete({ where: { id: user.id } });
+
+      await tx.auditLog.create({
+        data: {
+          userName: operator.name || "Super Admin",
+          userRole: Role.ADMIN,
+          action: "DELETE_USER",
+          details: `Super Admin menghapus data pengguna ${user.username} (${user.role}) secara permanen dari database PostgreSQL.`,
+          ipOrDevice: operator.ipOrDevice || "127.0.0.1",
+        },
+      });
+    });
+
+    return {
+      success: true,
+      message: `Akun pengguna ${user.username} berhasil dihapus secara permanen dari database PostgreSQL.`,
+    };
+  }
 }

@@ -295,20 +295,68 @@ export const api = {
     }
   },
 
-  async deleteUser(userId: string): Promise<{ success: boolean; message: string }> {
+  async deleteTeacher(teacherIdOrUserId: string, operator?: { role?: string; name?: string }): Promise<{ success: boolean; message: string }> {
     try {
-      const res = await fetch(`/api/users/${userId}`, {
+      const res = await fetch(`/api/master/teachers/${teacherIdOrUserId}`, {
         method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-role": operator?.role || "admin",
+          "x-user-name": operator?.name || "Super Admin",
+        },
+        body: JSON.stringify({
+          operatorRole: operator?.role || "admin",
+          operatorName: operator?.name || "Super Admin",
+        }),
       });
       const json = await res.json();
+      if (!res.ok || json.success === false) {
+        return {
+          success: false,
+          message: json.message || `Gagal menghapus data Guru dari database (HTTP ${res.status}).`,
+        };
+      }
       return {
-        success: json.success ?? res.ok,
-        message: json.message || (res.ok ? "Pengguna berhasil dinonaktifkan" : "Gagal menonaktifkan pengguna"),
+        success: true,
+        message: json.message || "Data Guru berhasil dihapus permanen dari database.",
       };
     } catch (e: any) {
       return {
         success: false,
-        message: e?.message || "Terjadi kesalahan saat menghapus pengguna.",
+        message: e?.message || "Terjadi kesalahan saat menghapus data Guru dari database.",
+      };
+    }
+  },
+
+  async deleteUser(userId: string, operator?: { role?: string; name?: string }): Promise<{ success: boolean; message: string }> {
+    try {
+      const res = await fetch(`/api/users/${userId}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-role": operator?.role || "admin",
+          "x-user-name": operator?.name || "Super Admin",
+        },
+        body: JSON.stringify({
+          operatorRole: operator?.role || "admin",
+          operatorName: operator?.name || "Super Admin",
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || json.success === false) {
+        return {
+          success: false,
+          message: json.message || `Gagal menghapus akun pengguna dari database (HTTP ${res.status}).`,
+        };
+      }
+      return {
+        success: true,
+        message: json.message || "Akun pengguna berhasil dihapus permanen dari database.",
+      };
+    } catch (e: any) {
+      return {
+        success: false,
+        message: e?.message || "Terjadi kesalahan saat menghapus data pengguna.",
       };
     }
   },

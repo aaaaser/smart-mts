@@ -524,31 +524,42 @@ usersRouter.post("/repair/parent/:id", async (req: Request, res: Response): Prom
   }
 });
 
-// Soft Delete / Deactivate User (Never delete historical records cascade)
+// Permanent Delete User from PostgreSQL Database (Strictly Super Admin only)
 usersRouter.delete("/:id", async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    const operatorRole =
+      (req.headers["x-user-role"] as string) ||
+      (req.body?.operatorRole as string) ||
+      (req.query?.operatorRole as string) ||
+      "admin";
+    const operatorName =
+      (req.headers["x-user-name"] as string) ||
+      (req.body?.operatorName as string) ||
+      "Super Admin";
 
-    const user = await prisma.user.update({
-      where: { id },
-      data: { isActive: false },
-      include: { teacher: true, student: true, parent: true },
+    // Strict authorization: Only Super Admin can delete
+    if (operatorRole.toLowerCase() !== "admin") {
+      res.status(403).json({
+        success: false,
+        message: "Akses ditolak: Hanya Super Admin yang memiliki wewenang untuk menghapus akun / data guru dari database.",
+      });
+      return;
+    }
+
+    const result = await AccountService.deleteUserAccount(id, {
+      role: operatorRole,
+      name: operatorName,
+      ipOrDevice: req.ip || "127.0.0.1",
     });
 
-    await prisma.auditLog.create({
-      data: {
-        userId: user.id,
-        userName: user.teacher?.fullName || user.student?.fullName || user.parent?.fullName || user.username,
-        userRole: user.role,
-        action: "DEACTIVATE_USER",
-        details: `User ${user.username} dinonaktifkan (data historis absensi dan nilai tetap aman)`,
-        ipOrDevice: req.ip || "127.0.0.1",
-      },
-    });
-
-    res.json({ success: true, message: "User berhasil dinonaktifkan tanpa menghapus riwayat nilai atau absensi." });
+    res.json({ success: true, message: result.message });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error?.message });
+    console.error("Delete user error:", error);
+    res.status(error?.message?.includes("Akses Ditolak") ? 403 : 500).json({
+      success: false,
+      message: error?.message || "Gagal menghapus data dari database.",
+    });
   }
 });
 

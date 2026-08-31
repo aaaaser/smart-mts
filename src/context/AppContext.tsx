@@ -93,7 +93,8 @@ interface AppContextType {
   users: User[];
   addUser: (user: Omit<User, "id">) => Promise<{ success: boolean; message: string }>;
   updateUser: (id: string, user: Partial<User>) => void;
-  deleteUser: (id: string) => void;
+  deleteUser: (id: string) => Promise<{ success: boolean; message: string }>;
+  deleteTeacher: (teacherIdOrUserId: string) => Promise<{ success: boolean; message: string }>;
   resetUserPassword: (userId: string) => Promise<{ success: boolean; message: string }>;
   regenerateUserQRToken: (userId: string) => Promise<string>;
   fetchUsers: () => Promise<void>;
@@ -770,16 +771,105 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast("success", "Pengguna Diperbarui", "Perubahan data pengguna berhasil disimpan.");
   };
 
-  const deleteUser = async (id: string) => {
-    const target = users.find((u) => u.id === id);
-    setUsers((prev) => prev.filter((u) => u.id !== id));
-    try {
-      await api.deleteUser(id);
-    } catch (e) {
-      console.warn("Could not sync deleteUser to server:", e);
+  const deleteTeacher = async (teacherIdOrUserId: string): Promise<{ success: boolean; message: string }> => {
+    // 1. Super Admin Authorization Check
+    if (currentUser?.role !== "admin") {
+      const msg = "Akses Ditolak: Hanya Super Admin yang memiliki wewenang untuk menghapus data Guru dari database.";
+      showToast("error", "Akses Ditolak", msg);
+      return { success: false, message: msg };
     }
-    addAuditLog("Hapus Pengguna", `Menghapus akun: ${target?.name || id}`);
-    showToast("info", "Pengguna Dihapus", "Akun berhasil dihapus dari sistem.");
+
+    const targetUser = users.find(
+      (u) => u.id === teacherIdOrUserId || (u as any).teacherId === teacherIdOrUserId
+    );
+    const targetName = targetUser?.name || "Guru";
+
+    try {
+      const res = await api.deleteTeacher(teacherIdOrUserId, {
+        role: currentUser.role,
+        name: currentUser.name,
+      });
+
+      if (res.success) {
+        // Remove from local users state
+        setUsers((prev) =>
+          prev.filter(
+            (u) =>
+              u.id !== teacherIdOrUserId &&
+              (u as any).teacherId !== teacherIdOrUserId
+          )
+        );
+        // Remove from teacher duties state
+        setTeacherDuties((prev) =>
+          prev.filter(
+            (d) =>
+              d.teacherId !== teacherIdOrUserId &&
+              d.teacherName !== targetName
+          )
+        );
+        // Re-fetch users from database to ensure fresh synchronized state
+        await fetchUsers();
+        addAuditLog(
+          "Hapus Guru",
+          `Super Admin menghapus data guru ${targetName} secara permanen dari database.`
+        );
+        showToast(
+          "success",
+          "Guru Berhasil Dihapus",
+          res.message || `Data guru ${targetName} berhasil dihapus permanen dari database.`
+        );
+        return { success: true, message: res.message };
+      } else {
+        showToast("error", "Gagal Menghapus Guru", res.message || "Gagal menghapus data guru dari database.");
+        return { success: false, message: res.message };
+      }
+    } catch (err: any) {
+      const msg = err?.message || "Terjadi kesalahan saat menghapus data guru dari database.";
+      showToast("error", "Gagal Menghapus Guru", msg);
+      return { success: false, message: msg };
+    }
+  };
+
+  const deleteUser = async (id: string): Promise<{ success: boolean; message: string }> => {
+    // 1. Super Admin Authorization Check
+    if (currentUser?.role !== "admin") {
+      const msg = "Akses Ditolak: Hanya Super Admin yang memiliki wewenang untuk menghapus pengguna dari database.";
+      showToast("error", "Akses Ditolak", msg);
+      return { success: false, message: msg };
+    }
+
+    const target = users.find((u) => u.id === id);
+    const targetName = target?.name || id;
+
+    // If deleting a teacher, delegate to deleteTeacher
+    if (target?.role === "guru") {
+      return await deleteTeacher(id);
+    }
+
+    try {
+      const res = await api.deleteUser(id, {
+        role: currentUser.role,
+        name: currentUser.name,
+      });
+
+      if (res.success) {
+        setUsers((prev) => prev.filter((u) => u.id !== id));
+        await fetchUsers();
+        addAuditLog(
+          "Hapus Pengguna",
+          `Super Admin menghapus akun: ${targetName} (${target?.role || "user"}) secara permanen dari database.`
+        );
+        showToast("success", "Pengguna Dihapus", res.message || `Akun ${targetName} berhasil dihapus permanen dari database.`);
+        return { success: true, message: res.message };
+      } else {
+        showToast("error", "Gagal Menghapus", res.message || "Gagal menghapus pengguna dari database.");
+        return { success: false, message: res.message };
+      }
+    } catch (e: any) {
+      const msg = e?.message || "Terjadi kesalahan saat menghapus pengguna dari database.";
+      showToast("error", "Gagal Menghapus", msg);
+      return { success: false, message: msg };
+    }
   };
 
   // Classes CRUD
@@ -2012,6 +2102,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addUser,
         updateUser,
         deleteUser,
+        deleteTeacher,
         resetUserPassword,
         fetchUsers,
         classes,
