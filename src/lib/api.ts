@@ -46,6 +46,59 @@ export interface DiagnosticResult {
   };
 }
 
+async function safeJsonFetch<T = any>(
+  url: string,
+  options?: RequestInit,
+  fallbackErrMsg = "Terjadi kesalahan pada server."
+): Promise<{ success: boolean; data?: T; message: string; status: number }> {
+  try {
+    const res = await fetch(url, options);
+    let text = "";
+    try {
+      text = await res.text();
+    } catch {
+      text = "";
+    }
+
+    let json: any = null;
+    if (text && text.trim().length > 0) {
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = null;
+      }
+    }
+
+    if (!res.ok) {
+      const errorMsg =
+        json?.message ||
+        json?.error ||
+        (text && text.length < 200 && !text.includes("<!DOCTYPE") ? text : null) ||
+        `${fallbackErrMsg} (HTTP ${res.status})`;
+
+      return {
+        success: false,
+        data: json,
+        message: errorMsg,
+        status: res.status,
+      };
+    }
+
+    return {
+      success: json?.success ?? true,
+      data: (json?.data !== undefined ? json.data : json) as T,
+      message: json?.message || "Operasi berhasil.",
+      status: res.status,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err?.message || "Gagal terhubung ke server. Periksa koneksi jaringan Anda.",
+      status: 0,
+    };
+  }
+}
+
 export const api = {
   // Public Data
   async getPublicStats(): Promise<PublicStats | null> {
@@ -276,28 +329,22 @@ export const api = {
   },
 
   async updateUser(userId: string, data: any): Promise<{ success: boolean; message: string }> {
-    try {
-      const res = await fetch(`/api/users/${userId}`, {
+    const res = await safeJsonFetch(
+      `/api/users/${encodeURIComponent(userId)}`,
+      {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
-      });
-      const json = await res.json();
-      return {
-        success: json.success ?? res.ok,
-        message: json.message || (res.ok ? "Data pengguna berhasil diperbarui" : "Gagal memperbarui pengguna"),
-      };
-    } catch (e: any) {
-      return {
-        success: false,
-        message: e?.message || "Terjadi kesalahan saat memperbarui pengguna.",
-      };
-    }
+      },
+      "Gagal memperbarui pengguna"
+    );
+    return { success: res.success, message: res.message };
   },
 
   async deleteTeacher(teacherIdOrUserId: string, operator?: { role?: string; name?: string }): Promise<{ success: boolean; message: string }> {
-    try {
-      const res = await fetch(`/api/master/teachers/${teacherIdOrUserId}`, {
+    const res = await safeJsonFetch(
+      `/api/master/teachers/${encodeURIComponent(teacherIdOrUserId)}`,
+      {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
@@ -308,29 +355,41 @@ export const api = {
           operatorRole: operator?.role || "admin",
           operatorName: operator?.name || "Super Admin",
         }),
-      });
-      const json = await res.json();
-      if (!res.ok || json.success === false) {
-        return {
-          success: false,
-          message: json.message || `Gagal menghapus data Guru dari database (HTTP ${res.status}).`,
-        };
-      }
-      return {
-        success: true,
-        message: json.message || "Data Guru berhasil dihapus permanen dari database.",
-      };
-    } catch (e: any) {
-      return {
-        success: false,
-        message: e?.message || "Terjadi kesalahan saat menghapus data Guru dari database.",
-      };
+      },
+      "Gagal menghapus data Guru dari database"
+    );
+
+    // If master route returned 404, fallback to users route
+    if (!res.success && (res.status === 404 || res.status === 0)) {
+      const fallback = await safeJsonFetch(
+        `/api/users/${encodeURIComponent(teacherIdOrUserId)}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-role": operator?.role || "admin",
+            "x-user-name": operator?.name || "Super Admin",
+          },
+          body: JSON.stringify({
+            operatorRole: operator?.role || "admin",
+            operatorName: operator?.name || "Super Admin",
+          }),
+        },
+        "Gagal menghapus akun Guru dari database"
+      );
+      return { success: fallback.success, message: fallback.message };
     }
+
+    return {
+      success: res.success,
+      message: res.message || "Data Guru berhasil dihapus permanen dari database.",
+    };
   },
 
   async deleteUser(userId: string, operator?: { role?: string; name?: string }): Promise<{ success: boolean; message: string }> {
-    try {
-      const res = await fetch(`/api/users/${userId}`, {
+    const res = await safeJsonFetch(
+      `/api/users/${encodeURIComponent(userId)}`,
+      {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
@@ -341,98 +400,69 @@ export const api = {
           operatorRole: operator?.role || "admin",
           operatorName: operator?.name || "Super Admin",
         }),
-      });
-      const json = await res.json();
-      if (!res.ok || json.success === false) {
-        return {
-          success: false,
-          message: json.message || `Gagal menghapus akun pengguna dari database (HTTP ${res.status}).`,
-        };
-      }
-      return {
-        success: true,
-        message: json.message || "Akun pengguna berhasil dihapus permanen dari database.",
-      };
-    } catch (e: any) {
-      return {
-        success: false,
-        message: e?.message || "Terjadi kesalahan saat menghapus data pengguna.",
-      };
-    }
+      },
+      "Gagal menghapus akun pengguna dari database"
+    );
+    return {
+      success: res.success,
+      message: res.message || "Akun pengguna berhasil dihapus permanen dari database.",
+    };
   },
 
   async resetPassword(userId: string): Promise<{ success: boolean; message: string }> {
-    try {
-      const res = await fetch(`/api/users/${userId}/reset-password`, {
+    const res = await safeJsonFetch(
+      `/api/users/${encodeURIComponent(userId)}/reset-password`,
+      {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-      });
-      const json = await res.json();
-      return {
-        success: json.success ?? res.ok,
-        message: json.message || (res.ok ? "Password berhasil direset" : "Gagal mereset password"),
-      };
-    } catch (e: any) {
-      return {
-        success: false,
-        message: e?.message || "Terjadi kesalahan saat mereset password.",
-      };
-    }
+      },
+      "Gagal mereset password"
+    );
+    return { success: res.success, message: res.message };
   },
 
   async regenerateQR(userId: string): Promise<{ success: boolean; message: string; qrToken?: string }> {
-    try {
-      const res = await fetch(`/api/users/${userId}/regenerate-qr`, {
+    const res = await safeJsonFetch<{ qrToken?: string }>(
+      `/api/users/${encodeURIComponent(userId)}/regenerate-qr`,
+      {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-      });
-      const json = await res.json();
-      return {
-        success: json.success ?? res.ok,
-        message: json.message || (res.ok ? "QR Code berhasil diregenerasi" : "Gagal meregenerasi QR Code"),
-        qrToken: json.qrToken,
-      };
-    } catch (e: any) {
-      return {
-        success: false,
-        message: e?.message || "Terjadi kesalahan saat meregenerasi QR Code.",
-      };
-    }
+      },
+      "Gagal meregenerasi QR Code"
+    );
+    return {
+      success: res.success,
+      message: res.message,
+      qrToken: res.data?.qrToken,
+    };
   },
 
   async getDiagnostic(): Promise<DiagnosticResult | null> {
-    try {
-      const res = await fetch("/api/users/diagnostic");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      if (json.success) {
-        return json;
-      }
-      return null;
-    } catch (e) {
-      console.warn("Could not fetch user diagnostics:", e);
-      return null;
+    const res = await safeJsonFetch<DiagnosticResult>(
+      "/api/users/diagnostic",
+      undefined,
+      "Gagal memuat diagnostik pengguna"
+    );
+    if (res.success && res.data) {
+      return res.data;
     }
+    return null;
   },
 
   async runRepair(): Promise<{ success: boolean; message: string; repairCount?: number; repairLog?: string[] }> {
-    try {
-      const res = await fetch("/api/users/repair", {
+    const res = await safeJsonFetch<{ repairCount?: number; repairLog?: string[] }>(
+      "/api/users/repair",
+      {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-      });
-      const json = await res.json();
-      return {
-        success: json.success ?? res.ok,
-        message: json.message || (res.ok ? "Perbaikan berhasil dijalankan" : "Gagal menjalankan perbaikan"),
-        repairCount: json.repairCount,
-        repairLog: json.repairLog,
-      };
-    } catch (e: any) {
-      return {
-        success: false,
-        message: e?.message || "Terjadi kesalahan saat menjalankan perbaikan database.",
-      };
-    }
+      },
+      "Gagal menjalankan perbaikan database"
+    );
+    return {
+      success: res.success,
+      message: res.message,
+      repairCount: res.data?.repairCount,
+      repairLog: res.data?.repairLog,
+    };
   },
 };

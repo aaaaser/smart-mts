@@ -1082,12 +1082,15 @@ export class AccountService {
 
     console.log(`[DELETE_TEACHER] Request by Super Admin '${operator.name || "admin"}' for ID: ${teacherIdOrUserId}`);
 
-    // 2. Find Teacher and associated User
-    const teacher = await prisma.teacher.findFirst({
+    // 2. Find Teacher and associated User by ID, userId, nip, username, or email
+    let teacher = await prisma.teacher.findFirst({
       where: {
         OR: [
           { id: teacherIdOrUserId },
           { userId: teacherIdOrUserId },
+          { nip: teacherIdOrUserId },
+          { user: { username: teacherIdOrUserId } },
+          { user: { email: teacherIdOrUserId } },
         ],
       },
       include: {
@@ -1096,39 +1099,53 @@ export class AccountService {
     });
 
     if (!teacher) {
-      // Check if user exists with teacher role
-      const user = await prisma.user.findUnique({
-        where: { id: teacherIdOrUserId },
+      // Check if user exists with teacher role or any identifier
+      const user = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { id: teacherIdOrUserId },
+            { username: teacherIdOrUserId },
+            { email: teacherIdOrUserId },
+          ],
+        },
+        include: {
+          teacher: true,
+        },
       });
+
       if (!user) {
         throw new Error(`Data Guru dengan ID '${teacherIdOrUserId}' tidak ditemukan di database.`);
       }
 
-      // If user exists without teacher record
-      await prisma.$transaction(async (tx) => {
-        await tx.userQrCode.deleteMany({ where: { userId: user.id } });
-        await tx.passwordResetRequest.deleteMany({ where: { userId: user.id } });
-        await tx.notification.deleteMany({ where: { userId: user.id } });
-        await tx.blogPost.deleteMany({ where: { authorId: user.id } });
-        await tx.auditLog.updateMany({ where: { userId: user.id }, data: { userId: null } });
-        await tx.attendanceRecord.deleteMany({ where: { userId: user.id } });
-        await tx.attendanceRecord.updateMany({ where: { scannedBy: user.id }, data: { scannedBy: null } });
-        await tx.attendanceSession.updateMany({ where: { createdBy: user.id }, data: { createdBy: null } });
-        await tx.user.delete({ where: { id: user.id } });
-        await tx.auditLog.create({
-          data: {
-            userName: operator.name || "Super Admin",
-            userRole: Role.ADMIN,
-            action: "DELETE_USER",
-            details: `Super Admin menghapus akun User ${user.username} (${user.role}) secara permanen dari database.`,
-            ipOrDevice: operator.ipOrDevice || "127.0.0.1",
-          },
+      if (user.teacher) {
+        teacher = { ...user.teacher, user };
+      } else {
+        // If user exists without teacher record
+        await prisma.$transaction(async (tx) => {
+          await tx.userQrCode.deleteMany({ where: { userId: user.id } });
+          await tx.passwordResetRequest.deleteMany({ where: { userId: user.id } });
+          await tx.notification.deleteMany({ where: { userId: user.id } });
+          await tx.blogPost.deleteMany({ where: { authorId: user.id } });
+          await tx.auditLog.updateMany({ where: { userId: user.id }, data: { userId: null } });
+          await tx.attendanceRecord.deleteMany({ where: { userId: user.id } });
+          await tx.attendanceRecord.updateMany({ where: { scannedBy: user.id }, data: { scannedBy: null } });
+          await tx.attendanceSession.updateMany({ where: { createdBy: user.id }, data: { createdBy: null } });
+          await tx.user.delete({ where: { id: user.id } });
+          await tx.auditLog.create({
+            data: {
+              userName: operator.name || "Super Admin",
+              userRole: Role.ADMIN,
+              action: "DELETE_USER",
+              details: `Super Admin menghapus akun User ${user.username} (${user.role}) secara permanen dari database.`,
+              ipOrDevice: operator.ipOrDevice || "127.0.0.1",
+            },
+          });
         });
-      });
-      return {
-        success: true,
-        message: `Akun Guru ${user.username} berhasil dihapus permanen dari database.`,
-      };
+        return {
+          success: true,
+          message: `Akun Guru ${user.username} berhasil dihapus permanen dari database.`,
+        };
+      }
     }
 
     const teacherId = teacher.id;
