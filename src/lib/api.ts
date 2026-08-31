@@ -356,7 +356,7 @@ export const api = {
           operatorName: operator?.name || "Super Admin",
         }),
       },
-      "Gagal menghapus data Guru dari database"
+      "Gagal menonaktifkan data Guru di database"
     );
 
     // If master route returned 404, fallback to users route
@@ -375,14 +375,14 @@ export const api = {
             operatorName: operator?.name || "Super Admin",
           }),
         },
-        "Gagal menghapus akun Guru dari database"
+        "Gagal menonaktifkan akun Guru di database"
       );
       return { success: fallback.success, message: fallback.message };
     }
 
     return {
       success: res.success,
-      message: res.message || "Data Guru berhasil dihapus permanen dari database.",
+      message: res.message || "Data Guru berhasil dinonaktifkan (Soft Delete).",
     };
   },
 
@@ -401,11 +401,11 @@ export const api = {
           operatorName: operator?.name || "Super Admin",
         }),
       },
-      "Gagal menghapus akun pengguna dari database"
+      "Gagal menonaktifkan akun pengguna di database"
     );
     return {
       success: res.success,
-      message: res.message || "Akun pengguna berhasil dihapus permanen dari database.",
+      message: res.message || "Akun pengguna berhasil dinonaktifkan (Soft Delete).",
     };
   },
 

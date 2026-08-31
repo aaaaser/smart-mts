@@ -524,7 +524,7 @@ usersRouter.post("/repair/parent/:id", async (req: Request, res: Response): Prom
   }
 });
 
-// Permanent Delete User from PostgreSQL Database (Strictly Super Admin only)
+// Soft Delete / Deactivate User in PostgreSQL Database (Strictly Super Admin only)
 usersRouter.delete("/:id", async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -538,11 +538,11 @@ usersRouter.delete("/:id", async (req: Request, res: Response): Promise<void> =>
       (req.body?.operatorName as string) ||
       "Super Admin";
 
-    // Strict authorization: Only Super Admin can delete
+    // Strict authorization: Only Super Admin can delete / deactivate
     if (operatorRole.toLowerCase() !== "admin") {
       res.status(403).json({
         success: false,
-        message: "Akses ditolak: Hanya Super Admin yang memiliki wewenang untuk menghapus akun / data guru dari database.",
+        message: "Akses ditolak: Hanya Super Admin yang memiliki wewenang untuk menonaktifkan akun / data guru di database.",
       });
       return;
     }
@@ -555,10 +555,10 @@ usersRouter.delete("/:id", async (req: Request, res: Response): Promise<void> =>
 
     res.json({ success: true, message: result.message });
   } catch (error: any) {
-    console.error("Delete user error:", error);
+    console.error("Delete/Deactivate user error:", error);
     res.status(error?.message?.includes("Akses Ditolak") ? 403 : 500).json({
       success: false,
-      message: error?.message || "Gagal menghapus data dari database.",
+      message: error?.message || "Gagal menonaktifkan data dari database.",
     });
   }
 });

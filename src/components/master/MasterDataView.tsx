@@ -754,13 +754,13 @@ export const MasterDataView: React.FC = () => {
                             onClick={() => handlePromptDelete(u)}
                             className={`p-1.5 rounded-lg transition-colors ${
                               isSuperAdmin
-                                ? "text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                                ? "text-slate-400 hover:text-amber-600 hover:bg-amber-50 cursor-pointer"
                                 : "text-slate-300 opacity-60 cursor-not-allowed"
                             }`}
                             title={
                               isSuperAdmin
-                                ? `Hapus permanen ${u.name} dari database`
-                                : "Hanya Super Admin yang berhak menghapus data"
+                                ? `Nonaktifkan akun ${u.name} (Soft Delete - data riwayat tetap tersimpan)`
+                                : "Hanya Super Admin yang berhak menonaktifkan data"
                             }
                             disabled={!isSuperAdmin}
                           >
@@ -1447,7 +1447,7 @@ export const MasterDataView: React.FC = () => {
         </div>
       </Modal>
 
-      {/* CONFIRMATION MODAL HAPUS GURU / PENGGUNA PERMANEN DARI DATABASE */}
+      {/* CONFIRMATION MODAL NONAKTIFKAN GURU / PENGGUNA (SOFT DELETE) */}
       <Modal
         isOpen={isDeleteConfirmOpen}
         onClose={() => {
@@ -1456,19 +1456,19 @@ export const MasterDataView: React.FC = () => {
             setUserToDelete(null);
           }
         }}
-        title="Konfirmasi Hapus Data dari Database PostgreSQL"
+        title="Konfirmasi Nonaktifkan Akun (Soft Delete)"
         maxWidth="max-w-md"
       >
         {userToDelete && (
           <div className="space-y-4">
-            <div className="p-4 rounded-xl bg-rose-50 border border-rose-200/80 flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-rose-100 text-rose-700 shrink-0">
+            <div className="p-4 rounded-xl bg-amber-50 border border-amber-200/80 flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-amber-100 text-amber-800 shrink-0">
                 <AlertTriangle className="w-5 h-5" />
               </div>
               <div>
-                <h4 className="text-sm font-bold text-rose-900">Peringatan Penghapusan Database</h4>
-                <p className="text-xs text-rose-700 mt-1 leading-relaxed">
-                  Tindakan ini akan menghapus data{" "}
+                <h4 className="text-sm font-bold text-amber-900">Penonaktifan Akun (Soft Delete)</h4>
+                <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                  Tindakan ini akan menonaktifkan akun login dan QR Code untuk{" "}
                   <strong className="font-semibold">{userToDelete.name}</strong> (
                   {userToDelete.role === "guru"
                     ? "Guru"
@@ -1477,13 +1477,11 @@ export const MasterDataView: React.FC = () => {
                     : userToDelete.role === "orangtua"
                     ? "Wali/Orang Tua"
                     : "Pengguna"}
-                  ) secara <span className="font-bold underline">permanen dari database PostgreSQL</span>.
+                  ).
                 </p>
-                {userToDelete.role === "guru" && (
-                  <p className="text-[11px] text-rose-600 mt-1.5">
-                    Seluruh data tugas tambahan, jadwal pelajaran, bank soal & ujian, serta akun login yang terhubung dengan guru ini akan dibersihkan secara aman.
-                  </p>
-                )}
+                <p className="text-[11px] text-emerald-800 bg-emerald-50/90 border border-emerald-200/60 rounded-lg p-2 mt-2 font-medium">
+                  ✓ <strong>Data Historis Aman:</strong> Seluruh riwayat presensi, jadwal mengajar, nilai ujian/rapor, dan bank soal <strong>tetap tersimpan utuh di database PostgreSQL</strong> dan tidak akan hilang.
+                </p>
               </div>
             </div>
 
@@ -1524,17 +1522,17 @@ export const MasterDataView: React.FC = () => {
                 type="button"
                 disabled={isDeletingUser || !isSuperAdmin}
                 onClick={handleConfirmDelete}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
               >
                 {isDeletingUser ? (
                   <>
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Menghapus dari Database...</span>
+                    <span>Menonaktifkan...</span>
                   </>
                 ) : (
                   <>
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>Hapus Permanen dari DB</span>
+                    <span>Nonaktifkan Akun (Soft Delete)</span>
                   </>
                 )}
               </button>

@@ -103,7 +103,7 @@ masterRouter.post("/teachers", async (req: Request, res: Response): Promise<void
   }
 });
 
-// DELETE /api/master/teachers/:id (Strictly Super Admin only)
+// DELETE /api/master/teachers/:id (Soft Delete / Deactivate Guru - Strictly Super Admin only)
 masterRouter.delete("/teachers/:id", async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -121,7 +121,7 @@ masterRouter.delete("/teachers/:id", async (req: Request, res: Response): Promis
     if (operatorRole.toLowerCase() !== "admin") {
       res.status(403).json({
         success: false,
-        message: "Akses ditolak: Hanya Super Admin yang memiliki hak akses untuk menghapus data Guru dari database.",
+        message: "Akses ditolak: Hanya Super Admin yang memiliki hak akses untuk menonaktifkan data Guru.",
       });
       return;
     }
@@ -134,10 +134,10 @@ masterRouter.delete("/teachers/:id", async (req: Request, res: Response): Promis
 
     res.json({ success: true, message: result.message });
   } catch (error: any) {
-    console.error("Delete teacher error:", error);
+    console.error("Delete/Deactivate teacher error:", error);
     res.status(error?.message?.includes("Akses Ditolak") ? 403 : 500).json({
       success: false,
-      message: error?.message || "Gagal menghapus data Guru dari database.",
+      message: error?.message || "Gagal menonaktifkan data Guru di database.",
     });
   }
 });

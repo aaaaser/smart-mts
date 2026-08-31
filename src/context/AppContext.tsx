@@ -774,7 +774,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteTeacher = async (teacherIdOrUserId: string): Promise<{ success: boolean; message: string }> => {
     // 1. Super Admin Authorization Check
     if (currentUser?.role !== "admin") {
-      const msg = "Akses Ditolak: Hanya Super Admin yang memiliki wewenang untuk menghapus data Guru dari database.";
+      const msg = "Akses Ditolak: Hanya Super Admin yang memiliki wewenang untuk menonaktifkan data Guru.";
       showToast("error", "Akses Ditolak", msg);
       return { success: false, message: msg };
     }
@@ -791,41 +791,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
 
       if (res.success) {
-        // Remove from local users state
-        setUsers((prev) =>
-          prev.filter(
-            (u) =>
-              u.id !== teacherIdOrUserId &&
-              (u as any).teacherId !== teacherIdOrUserId
-          )
-        );
-        // Remove from teacher duties state
-        setTeacherDuties((prev) =>
-          prev.filter(
-            (d) =>
-              d.teacherId !== teacherIdOrUserId &&
-              d.teacherName !== targetName
-          )
-        );
-        // Re-fetch users from database to ensure fresh synchronized state
+        // Re-fetch users from database to synchronize active/inactive state
         await fetchUsers();
         addAuditLog(
-          "Hapus Guru",
-          `Super Admin menghapus data guru ${targetName} secara permanen dari database.`
+          "Nonaktifkan Guru (Soft Delete)",
+          `Super Admin menonaktifkan akun guru ${targetName}. Data riwayat presensi, jadwal, dan nilai tetap aman di database.`
         );
         showToast(
           "success",
-          "Guru Berhasil Dihapus",
-          res.message || `Data guru ${targetName} berhasil dihapus permanen dari database.`
+          "Guru Dinonaktifkan (Soft Delete)",
+          res.message || `Akun guru ${targetName} berhasil dinonaktifkan. Data historis tetap aman.`
         );
         return { success: true, message: res.message };
       } else {
-        showToast("error", "Gagal Menghapus Guru", res.message || "Gagal menghapus data guru dari database.");
+        showToast("error", "Gagal Menonaktifkan Guru", res.message || "Gagal menonaktifkan data guru di database.");
         return { success: false, message: res.message };
       }
     } catch (err: any) {
-      const msg = err?.message || "Terjadi kesalahan saat menghapus data guru dari database.";
-      showToast("error", "Gagal Menghapus Guru", msg);
+      const msg = err?.message || "Terjadi kesalahan saat menonaktifkan data guru di database.";
+      showToast("error", "Gagal Menonaktifkan Guru", msg);
       return { success: false, message: msg };
     }
   };
@@ -833,7 +817,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteUser = async (id: string): Promise<{ success: boolean; message: string }> => {
     // 1. Super Admin Authorization Check
     if (currentUser?.role !== "admin") {
-      const msg = "Akses Ditolak: Hanya Super Admin yang memiliki wewenang untuk menghapus pengguna dari database.";
+      const msg = "Akses Ditolak: Hanya Super Admin yang memiliki wewenang untuk menonaktifkan pengguna dari database.";
       showToast("error", "Akses Ditolak", msg);
       return { success: false, message: msg };
     }
@@ -853,21 +837,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
 
       if (res.success) {
-        setUsers((prev) => prev.filter((u) => u.id !== id));
         await fetchUsers();
         addAuditLog(
-          "Hapus Pengguna",
-          `Super Admin menghapus akun: ${targetName} (${target?.role || "user"}) secara permanen dari database.`
+          "Nonaktifkan Pengguna (Soft Delete)",
+          `Super Admin menonaktifkan akun: ${targetName} (${target?.role || "user"}) via Soft Delete.`
         );
-        showToast("success", "Pengguna Dihapus", res.message || `Akun ${targetName} berhasil dihapus permanen dari database.`);
+        showToast("success", "Pengguna Dinonaktifkan", res.message || `Akun ${targetName} berhasil dinonaktifkan.`);
         return { success: true, message: res.message };
       } else {
-        showToast("error", "Gagal Menghapus", res.message || "Gagal menghapus pengguna dari database.");
+        showToast("error", "Gagal Menonaktifkan", res.message || "Gagal menonaktifkan pengguna dari database.");
         return { success: false, message: res.message };
       }
     } catch (e: any) {
-      const msg = e?.message || "Terjadi kesalahan saat menghapus pengguna dari database.";
-      showToast("error", "Gagal Menghapus", msg);
+      const msg = e?.message || "Terjadi kesalahan saat menonaktifkan pengguna dari database.";
+      showToast("error", "Gagal Menonaktifkan", msg);
       return { success: false, message: msg };
     }
   };
