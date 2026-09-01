@@ -507,6 +507,6 @@ export interface ContactMessage {
   createdAt: string;
 }
 
-export type PublicRoute = "home" | "structure" | "blog" | "blog_detail" | "contact" | "login";
+export type PublicRoute = "home" | "structure" | "blog" | "blog_detail" | "contact" | "login" | "change_password";
 export type AppViewMode = "public" | "dashboard";
 

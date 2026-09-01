@@ -3,7 +3,9 @@ import { AppProvider, useApp } from "./context/AppContext";
 import { Navbar } from "./components/layout/Navbar";
 import { Sidebar } from "./components/layout/Sidebar";
 import { DashboardView } from "./components/dashboard/DashboardView";
+import { TeacherContextDashboard } from "./components/dashboard/TeacherContextDashboard";
 import { StudentDashboardView } from "./components/student/StudentDashboardView";
+import { ParentDashboardView } from "./components/parent/ParentDashboardView";
 import { TeacherDutyManagementView } from "./components/duties/TeacherDutyManagementView";
 import { MasterDataView } from "./components/master/MasterDataView";
 import { AttendanceView } from "./components/attendance/AttendanceView";
@@ -92,7 +94,10 @@ const DashboardLayout: React.FC = () => {
   const renderDashboardContent = () => {
     switch (activeTab) {
       case "dashboard":
-        return currentUser?.role === "siswa" ? <StudentDashboardView /> : <DashboardView />;
+        if (currentUser?.role === "siswa") return <StudentDashboardView />;
+        if (currentUser?.role === "orangtua") return <ParentDashboardView />;
+        if (currentUser?.role === "guru") return <TeacherContextDashboard onOpenAIAssistant={() => setIsAIDrawerOpen(true)} />;
+        return <DashboardView />;
       case "profile":
         return <UserProfileView />;
       case "reset-password":

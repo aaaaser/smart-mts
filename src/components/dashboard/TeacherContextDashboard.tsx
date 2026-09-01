@@ -30,6 +30,7 @@ import {
   Star,
   Check,
   Filter,
+  ArrowRight,
 } from "lucide-react";
 
 interface TeacherContextDashboardProps {
@@ -43,6 +44,7 @@ export const TeacherContextDashboard: React.FC<TeacherContextDashboardProps> = (
     users,
     classes,
     subjects,
+    schedules,
     exams,
     assignments,
     assignmentSubmissions,
@@ -386,6 +388,137 @@ export const TeacherContextDashboard: React.FC<TeacherContextDashboardProps> = (
               <h4 className="font-bold text-slate-900 text-xs sm:text-sm">Penilaian & Nilai</h4>
               <p className="text-[11px] text-slate-400 mt-0.5">Input nilai dan remedial</p>
             </button>
+          </div>
+
+          {/* Today Teaching Schedule & Active Assignments/CBT */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Today Teaching Schedules (7 Cols) */}
+            <div className="lg:col-span-7 bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-emerald-700" />
+                  <h3 className="text-sm font-black text-slate-900">
+                    Jadwal Mengajar Hari Ini ({new Date().toLocaleDateString("id-ID", { weekday: "long" })})
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setActiveTab("schedules")}
+                  className="text-xs font-bold text-emerald-700 hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <span>Lihat Jadwal Lengkap</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {schedules.filter((s) => s.teacherId === currentUser.id || s.teacherId === "teacher_01").length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 text-xs italic">
+                    Tidak ada jadwal mengajar di kelas hari ini.
+                  </div>
+                ) : (
+                  schedules
+                    .filter((s) => s.teacherId === currentUser.id || s.teacherId === "teacher_01")
+                    .slice(0, 3)
+                    .map((sch) => {
+                      const cls = classes.find((c) => c.id === sch.classId);
+                      const subj = subjects.find((s) => s.id === sch.subjectId);
+                      return (
+                        <div
+                          key={sch.id}
+                          className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50/70 hover:border-emerald-300 transition-all flex items-center justify-between gap-3"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 font-black flex items-center justify-center text-xs shrink-0">
+                              {cls?.name || "Kelas"}
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-bold text-slate-900">{subj?.name || "Mata Pelajaran"}</h4>
+                              <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1.5 font-mono">
+                                <Clock className="w-3 h-3 text-slate-400" />
+                                {sch.startTime} - {sch.endTime} WIB • {sch.room || "Ruang Kelas"}
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => setActiveTab("attendance")}
+                            className="px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                            <span>Presensi KBM</span>
+                          </button>
+                        </div>
+                      );
+                    })
+                )}
+              </div>
+            </div>
+
+            {/* Active Assignments & CBT summary (5 Cols) */}
+            <div className="lg:col-span-5 space-y-4">
+              <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2">
+                    <ClipboardList className="w-4 h-4 text-emerald-700" />
+                    <h3 className="text-sm font-black text-slate-900">
+                      Tugas & LKPD Perlu Koreksi
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab("assignments")}
+                    className="text-xs font-bold text-emerald-700 hover:underline cursor-pointer"
+                  >
+                    Kelola ({assignments.length})
+                  </button>
+                </div>
+
+                <div className="space-y-2.5">
+                  {assignments.slice(0, 2).map((asg) => {
+                    const submissions = assignmentSubmissions.filter((s) => s.assignmentId === asg.id);
+                    const targetClass = classes.find((c) => c.id === asg.classId);
+                    return (
+                      <div
+                        key={asg.id}
+                        className="p-3 bg-slate-50/80 rounded-2xl border border-slate-100 flex items-center justify-between gap-3"
+                      >
+                        <div className="min-w-0">
+                          <h4 className="text-xs font-bold text-slate-900 truncate">{asg.title}</h4>
+                          <p className="text-[10px] text-slate-500 font-mono mt-0.5">
+                            Kelas {targetClass?.name} • Tenggat {asg.dueDate}
+                          </p>
+                        </div>
+
+                        <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-100 text-emerald-800 shrink-0">
+                          {submissions.length} Jawaban
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* AI Assistant Banner */}
+              <div className="bg-gradient-to-r from-emerald-900 to-teal-900 rounded-3xl p-5 text-white space-y-2 shadow-xs border border-emerald-700/50">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase text-emerald-300 tracking-wider flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    AI Madrasah Assistant
+                  </span>
+                </div>
+                <h4 className="text-xs font-bold text-white leading-snug">
+                  Butuh pembuatan soal HOTS atau modul ajar kurikulum merdeka?
+                </h4>
+                <div className="pt-1">
+                  <button
+                    onClick={onOpenAIAssistant}
+                    className="px-3.5 py-1.5 bg-white text-emerald-950 hover:bg-emerald-50 rounded-xl text-xs font-black transition-all shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <span>Buka Gemini AI Assistant</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

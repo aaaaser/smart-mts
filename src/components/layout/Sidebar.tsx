@@ -108,7 +108,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenAIAssis
       { id: "reports", label: "Analisis Nilai", icon: <BarChart3 className="w-4 h-4" /> },
     ],
     system: [
-      { id: "settings", label: "Pengaturan Sistem", icon: <Settings className="w-4 h-4" /> },
+      { id: "settings", label: "Pengaturan Akun", icon: <Settings className="w-4 h-4" /> },
     ],
   };
 
